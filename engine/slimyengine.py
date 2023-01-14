@@ -492,6 +492,7 @@ class Game:
         self._background_color = Colors.black
         self._events = []
         self._images = {}
+        self._keydowns:list[int] = []
         self.active_scene : Scene = Scene()
         
         self._running_threads:List['StoppableThread'] = []
@@ -623,10 +624,16 @@ class Game:
         self.size = (event.dict['size'][0], event.dict['size'][1])
         self.update_size()
         pass
+
+    def is_key_down(self, key):
+        for k in self._keydowns:
+            if k==key: return True
+        return False
     
     def begin_frame(self, dont_clear=False):
         if not self._alive: return
         events = pygame.event.get()
+        self._keydowns.clear()
         for event in events:
             if event.type == pygame.QUIT:
                 self._alive=False
@@ -634,6 +641,8 @@ class Game:
             if event.type == pygame.VIDEORESIZE:
                 self.on_resize(event)
                 pygame.display.update()
+            if event.type == pygame.KEYDOWN:
+                self._keydowns.append(event.key)
             if event.type == pygame_gui.UI_BUTTON_PRESSED:
                 if self._gui_refs.get(event.ui_element):
                     self._gui_refs[event.ui_element].on_click()
@@ -652,13 +661,13 @@ class Game:
                 function[0]=self._ctime
         # self._delta_time = self._clock.get_time()
         self._gui_manager.update(self._delta_time)
-        self.debug_pass()
         self._world.tick(self._delta_time)
         self.draw()
     
     def draw(self):
         self._gui_manager.draw_ui(self.screen)
         self._world.draw()
+        self.debug_pass()
 
     
     if INSTALLED:
@@ -792,7 +801,7 @@ class World:
         if self._physics_world is not None:
             self._physics_world.tick(delta_time)
         if self._current_scene is not None:
-            self._current_scene.update()
+            self._current_scene.update(delta_time)
             self._current_scene.draw()
             self._current_scene.light_pass()
         for system in self._particle_systems:
@@ -860,9 +869,10 @@ class Scene:
             
             Globals.game.screen.blit(self._lightmap, (0, 0), special_flags=pygame.BLEND_MULT)
     
-    def update(self):
+    def update(self, dt:float):
         for obj in self._objects:
             obj.update()
+            obj.tick(dt)
     
     def clear(self):
         self._backgrounds.clear()
@@ -1095,17 +1105,17 @@ class Pawn(Actor):
     def __init__(self, pos:vec3|None=None, image_name:str="default"):
         Actor.__init__(self, pos=pos)
         self._root:PhysicsComponent = PhysicsComponent(None, pos=pos, mass=0.1)
-        self.shadow = SpriteComponent(self.root, image_name="default_shadow")
-        self.shadow.size = vec3(10, 10, 10)
-        self.shadow.set_inherit_parent_location(False)
-        self.shadow.set_draw_offset(vec2(0, 5))
-        self.shadow.set_size(vec3(1, 1, 0))
-        self.character = SpriteComponent(self.root, image_name=image_name)
+        self._shadow = SpriteComponent(self.root, image_name="default_shadow")
+        self._shadow.size = vec3(10, 10, 10)
+        self._shadow.set_inherit_parent_location(False)
+        self._shadow.set_draw_offset(vec2(0, 5))
+        self._shadow.set_size(vec3(1, 1, 0))
+        self._character = SpriteComponent(self.root, image_name=image_name)
     
     def tick(self, dt:float):
         Actor.tick(self, dt)
         self._root.apply_force(GravityForce(-9.81)).apply_force(FrictionForce())
-        self.shadow._pos = vec3(self.root.get_world_position().x, self.root.get_world_position().y, Globals.world.line_trace(self.root.get_local_position(), vec3(0, 0, -1)).z)
+        self._shadow._pos = vec3(self.root.get_world_position().x, self.root.get_world_position().y, Globals.world.line_trace(self.root.get_local_position(), vec3(0, 0, -1)).z)
 
 
 class Component:
@@ -1192,6 +1202,9 @@ class SceneComponent(Component):
             child.update()
         self._valid = True
         return
+    
+    def tick(self, dt:float):
+        pass
 
 class Camera(SceneComponent):
     def __init__(self, parent:SceneComponent|None=None, pos:vec3|None=None) -> None:
@@ -1624,7 +1637,6 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
     def __init__(self, parent, pos=None, mass:float=1, world:None|World=None):
         SceneComponent.__init__(self, parent, pos)
         self._physics_world : PhysicsWorld = world.get_physics_world() if world else Globals.game.get_world().get_physics_world()
-        log(Globals.game.get_world().get_physics_world())
         self.mass = mass
         self.vel = vec3()
         self.acc = vec3()
