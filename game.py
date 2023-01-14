@@ -19,20 +19,12 @@ player = Player()
 scene.register_actor(player)
 scene.register_component(player.root)
 
+
+
 game.update_size()
 while game.is_alive():
     game.begin_frame()
-
-    if game.is_key_down(pygame.K_SPACE):
-        player.jump()
     
-    direction = vec2()
-    if game.is_key_down(pygame.K_LEFT):  direction+=vec2(-1,  0)
-    if game.is_key_down(pygame.K_RIGHT): direction+=vec2( 1,  0)
-    if game.is_key_down(pygame.K_UP):    direction+=vec2( 0, -1)
-    if game.is_key_down(pygame.K_DOWN):  direction+=vec2( 0,  1)
-    if direction.length_squared()>0: player.add_input(direction.normalize())
-
     game.tick()
 
     game.end_frame()
