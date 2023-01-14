@@ -10,11 +10,13 @@ world = game.get_world()
 
 main_menu = Scene()
 world.enable_physics()
+world.get_physics_world().set_limits(vec3(-math.inf, -math.inf, 0), vec3(math.inf, math.inf, math.inf))
 
 scene = Scene()
 world.load_scene(scene)
 
 player = Player()
+scene.register_actor(player)
 scene.register_component(player.root)
 
 game.update_size()

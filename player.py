@@ -7,7 +7,7 @@ class Player(Pawn):
     
     def tick(self, dt:float):
         Pawn.tick(self, dt)
-        self._root.apply_force(GravityForce(-10))
+        self._root.apply_force(GravityForce())
 
     def jump(self):
-        self._root.apply_force(Force(vec3(0, 0, 10)))
+        self._root.apply_force(Force(vec3(0, 0, 20)))

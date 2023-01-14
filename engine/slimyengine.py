@@ -816,6 +816,7 @@ class World:
 class Scene:
     def __init__(self):
         self._objects : List[SceneComponent] = []
+        self._actors : list[Actor] = []
         self.manual_rendering : bool = False
         self.active_camera : Camera = OrthographicCamera() # type: ignore
         self._drawables : SortedList = SortedList()
@@ -833,7 +834,9 @@ class Scene:
             for child in obj.children:
                 if issubclass(type(child), SceneComponent):
                     self.add_drawable_rec(child) # type: ignore
-    
+    def register_actor(self, actor:'Actor') -> 'Scene':
+        self._actors.append(actor)
+        return self
     def register_component(self, component : 'SceneComponent'):
         self._objects.append(component) # Add only the root component
         self.add_drawable_rec(component)
@@ -872,7 +875,8 @@ class Scene:
     def update(self, dt:float):
         for obj in self._objects:
             obj.update()
-            obj.tick(dt)
+        for actor in self._actors:
+            actor.tick(dt)
     
     def clear(self):
         self._backgrounds.clear()
@@ -1114,8 +1118,7 @@ class Pawn(Actor):
     
     def tick(self, dt:float):
         Actor.tick(self, dt)
-        self._root.apply_force(GravityForce(-9.81)).apply_force(FrictionForce())
-        self._shadow._pos = vec3(self.root.get_world_position().x, self.root.get_world_position().y, Globals.world.line_trace(self.root.get_local_position(), vec3(0, 0, -1)).z)
+        self._shadow._pos = vec3(self.root.get_world_position().x, self.root.get_world_position().y, Globals.game._world._physics_world.line_trace(self.root.get_local_position(), vec3(0, 0, -1)).z)
 
 
 class Component:
@@ -1203,9 +1206,6 @@ class SceneComponent(Component):
         self._valid = True
         return
     
-    def tick(self, dt:float):
-        pass
-
 class Camera(SceneComponent):
     def __init__(self, parent:SceneComponent|None=None, pos:vec3|None=None) -> None:
         SceneComponent.__init__(self, parent, pos)
@@ -1677,7 +1677,9 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
         if not self.simulate_physics: return
         
         self.acc = vec3()
-        for f in self._forces:
+        for i in range(self._forces_count):
+            f = self._forces[i]
+            # print(f.get(self))
             force = f.get(self)
             self.acc += force
             Globals.game.draw_debug_vector(self.get_world_position(), self.get_world_position()+0.1*force)
