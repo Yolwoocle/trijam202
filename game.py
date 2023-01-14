@@ -1,10 +1,12 @@
 from engine.slimyengine import *
 from player import *
-
+from objects import *
+from globals import *
 
 game = Game().init().target_fps(60).set_background_color(Colors.darkgrey)
 game.set_debug(True)
 game.load_image("player", "assets/art/player.png")
+game.load_image("cement_mixer", "assets/art/cement_mixer.png")
 
 world = game.get_world()
 
@@ -16,8 +18,13 @@ scene = Scene()
 world.load_scene(scene)
 
 player = Player()
+cement_mixer = CementMixer()
+
 scene.register_actor(player)
+scene.register_actor(cement_mixer)
+
 scene.register_component(player.root)
+scene.register_component(cement_mixer.root)
 
 
 
