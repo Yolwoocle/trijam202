@@ -1751,7 +1751,7 @@ class SpriteComponent(DrawableComponent):
             draw_pos = Globals.game.camera.world_to_screen(self.get_world_position())
             self.draw_size = Globals.game.camera.world_size2_to_screen(self.size.xy)
             Globals.game.draw_debug_box(self.get_world_position()-self.size/2, self.get_world_position()+self.size/2, (0, 255, 100), offset=self._draw_offset)
-            if self.sprite.size!=self.draw_size:
+            if self.sprite.size != self.draw_size:
                 if (not self._size_locked):
                     # log("Size if wrong, reloading sprite", logTypes.warning)
                     self.sprite = Globals.game.load_image(self.sprite.name, self.sprite.path, self.draw_size)
