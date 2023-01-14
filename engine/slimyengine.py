@@ -492,7 +492,7 @@ class Game:
         self._background_color = Colors.black
         self._events = []
         self._images = {}
-        self._keydowns:list[int] = []
+        self._keydowns:map[int, bool] = {}
         self.active_scene : Scene = Scene()
         
         self._running_threads:List['StoppableThread'] = []
@@ -626,14 +626,13 @@ class Game:
         pass
 
     def is_key_down(self, key):
-        for k in self._keydowns:
-            if k==key: return True
+        if key in self._keydowns:
+            return self._keydowns[key]
         return False
     
     def begin_frame(self, dont_clear=False):
         if not self._alive: return
         events = pygame.event.get()
-        self._keydowns.clear()
         for event in events:
             if event.type == pygame.QUIT:
                 self._alive=False
@@ -642,7 +641,9 @@ class Game:
                 self.on_resize(event)
                 pygame.display.update()
             if event.type == pygame.KEYDOWN:
-                self._keydowns.append(event.key)
+                self._keydowns[event.key]=True
+            if event.type == pygame.KEYUP:
+                self._keydowns[event.key]=False
             if event.type == pygame_gui.UI_BUTTON_PRESSED:
                 if self._gui_refs.get(event.ui_element):
                     self._gui_refs[event.ui_element].on_click()
@@ -1599,9 +1600,9 @@ class Force:
         self.value*=val
 
 class FrictionForce(Force):
-    def __init__(self, value=vec3()):
-        Force.__init__(self, value)
-        self.friction = 0.9
+    def __init__(self, value=0.9):
+        Force.__init__(self, vec3())
+        self.friction = value
     
     def get(self, object:Union['PhysicsComponent',None]=None):
         if object and object.vel.length_squared()>0:
@@ -1679,7 +1680,6 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
         self.acc = vec3()
         for i in range(self._forces_count):
             f = self._forces[i]
-            # print(f.get(self))
             force = f.get(self)
             self.acc += force
             Globals.game.draw_debug_vector(self.get_world_position(), self.get_world_position()+0.1*force)
