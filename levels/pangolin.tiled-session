@@ -1,0 +1,20 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "",
+    "expandedProjectPaths": [
+    ],
+    "fileStates": {
+        "C:/Users/rfaye/Documents/Code/GameJam/Trijam/SlimyEngine/data/grass_tileset.tsx": {
+            "scaleInDock": 1
+        }
+    },
+    "last.externalTilesetPath": "C:/Users/rfaye/Documents/Code/GameJam/Trijam/SlimyEngine",
+    "openFiles": [
+    ],
+    "project": "pangolin.tiled-project",
+    "recentFiles": [
+    ]
+}
