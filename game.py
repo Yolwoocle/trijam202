@@ -7,6 +7,7 @@ game = Game().init().target_fps(60).set_background_color(Colors.darkgrey)
 game.set_debug(True)
 game.load_image("player", "assets/art/player.png")
 game.load_image("cement_mixer", "assets/art/cement_mixer.png")
+game.load_image("speech_bubble", "assets/art/speech_bubble.png")
 
 world = game.get_world()
 
@@ -27,11 +28,12 @@ scene.register_component(player.root)
 scene.register_component(cement_mixer.root)
 
 
-
 game.update_size()
 while game.is_alive():
     game.begin_frame()
     
+    if game.is_key_down(pygame.K_SPACE):
+        cement_mixer.show_tooltip()
     game.tick()
 
     game.end_frame()

@@ -11,6 +11,8 @@ class CementMixer(Placeable):
         Placeable.__init__(self, pos)
         self._root = SpriteComponent(None, pos, image_name="cement_mixer")
         self._root.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
+        self._tooltip = SpriteComponent(self._root, vec3(), image_name="speech_bubble")
+        self._tooltip.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
     
     def show_tooltip(self):
         pass
