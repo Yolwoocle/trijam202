@@ -9,6 +9,17 @@
     "fileStates": {
         "C:/Users/rfaye/Documents/Code/GameJam/Trijam/SlimyEngine/data/grass_tileset.tsx": {
             "scaleInDock": 1
+        },
+        "C:/Users/rfaye/Documents/Code/GameJam/Trijam/SlimyEngine/data/terrain1.tmx": {
+            "scale": 2.3275,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 240.38668098818476,
+                "y": 222.77121374865732
+            }
+        },
+        "C:/Users/rfaye/Documents/Code/GameJam/Trijam/SlimyEngine/grass_tileset.tsx": {
+            "scaleInDock": 1
         }
     },
     "last.externalTilesetPath": "C:/Users/rfaye/Documents/Code/GameJam/Trijam/SlimyEngine",
@@ -16,5 +27,6 @@
     ],
     "project": "pangolin.tiled-project",
     "recentFiles": [
+        "C:/Users/rfaye/Documents/Code/GameJam/Trijam/SlimyEngine/data/terrain1.tmx"
     ]
 }
