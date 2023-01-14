@@ -1815,6 +1815,26 @@ class Button(Widget):
     def is_valid(self):
         return self._button!=None
 
+class UIImage(Widget):
+    def __init__(self, parent, pos: None | vec2 = None, size: None | vec2 = None, image:str="default"):
+        Widget.__init__(self, parent, pos, size)
+        self._image = Globals.game.load_image(image)
+        self._widg = None
+    
+    def register(self):
+        relative_rect = pygame.Rect(self._pos.x, self._pos.y, self._size.x, self._size.y)
+        self._widg = pygame_gui.elements.UIImage(relative_rect=relative_rect,
+                                                manager=Globals.game.get_ui_manager(),
+                                                image_surface=self._image.get_data())
+        Globals.game._gui_refs[self._widg]=self
+        return self
+    
+    def hide(self):
+        self._widg.hide()
+    
+    def show(self):
+        self._widg.show()
+
 def testSlimyEngine():
     pass
 
