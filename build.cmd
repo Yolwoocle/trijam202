@@ -1,15 +1,15 @@
 @echo off
+echo Usage: build.cmd [options]
 :: Handle a switch option
 if "%1" == "-c" goto configure
 if "%1" == "--configure" goto configure
 
 
 :build
-pyinstaller --clean --log-level WARN SlimyWaterpolo.spec
+pyinstaller --clean --log-level WARN Trijam202.spec
 exit /b
 
 :: Configure
 :configure
-echo Usage: build.cmd [options]
-pyi-makespec --onefile --splash splash.png --log-level WARN --windowed --icon=icon.ico --add-data "data/*;data" --name=SlimyWaterpolo game.py
+pyi-makespec --onefile --splash data/splash.png --log-level WARN --windowed --icon=icon.ico --add-data "data/*;data" --add-data "assets/*;assets" --name=Trijam202 game.py
 goto build

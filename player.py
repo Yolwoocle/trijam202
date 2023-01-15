@@ -21,7 +21,6 @@ class Player(Pawn):
         if self._game.is_key_down(pygame.K_DOWN):  direction+=vec2( 0,  1)
         if direction.length_squared()>0: self.add_input(direction.normalize())
 
-
     def jump(self):
         self._root.apply_force(Force(vec3(0, 0, 20)))
     

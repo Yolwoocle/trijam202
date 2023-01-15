@@ -76,7 +76,7 @@ game.quit()
 - Une ```Light``` est un ```DrawableComponent``` qui est logiquement censé lors du draw faire une commande du type         ```scene.get_light_map().blit(..., special_flags=pygame.BLEND_ADD)```. Il possède de plus une méthode ```render()``` pour permettre de précalculer la lumière. Cf. ```PointLight```
 - ```ParticleEmitter``` est un ```Drawable``` chargé de gérer (émission, update, ...) un ensemble de particules
 - ```ParticleSystem``` est un ```DrawableComponent``` qui possède une liste de ```ParticleEmitter```. C'est donc le ```ParticleSystem``` qui possède une position dans le monde, dont se servent les ```ParticleEmitter```. Pourquoi séparer les deux? Dans le cas d'un feu par exemple il est intéressant de le manipuler (déplacer, afficher/ cacher) en tant qu'unique ```ParticleSystem``` alors qu'il possède deux ```ParticleEmitter```: les flammes et la fumée
-- Un ```DebugDraw``` est une sorte de ```Drawable``` avec une reference au ```Game``` en plus (existence plutôt historique et par soucis de clareté, pas d'intérêt particulier à ne pas simplement hériter de ```Drawable```). Destiné aux élément de debug, automatiquement caché en production.
+- Un ```DebugDraw``` est une sorte de ```Drawable``` avec une reference au ```Game``` en plus (existence plutôt historique et par soucis de clareté, pas d'intérêt particulier à ne pas simplement hériter de ```Drawable```). Destiné aux éléments de debug, automatiquement caché en production.
 
 ---
 
