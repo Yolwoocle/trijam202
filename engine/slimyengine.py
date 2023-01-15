@@ -470,6 +470,7 @@ class Object:
 
 class Settings:
     optimize_particles_alpha = False
+    max_swaps_per_frame = 1
 
 class Globals:
     game : 'Game' = None                # type: ignore
@@ -820,7 +821,7 @@ class Scene:
         self._actors : list[Actor] = []
         self.manual_rendering : bool = False
         self.active_camera : Camera = OrthographicCamera() # type: ignore
-        self._drawables : SortedList = SortedList()
+        self._drawables : list[DrawableComponent] = []
         self._tilemaps : list[Tilemap] = []
         self._tilesets : list[Tileset] = []
         self._backgrounds : list[SpriteComponent] = []
@@ -830,14 +831,16 @@ class Scene:
     
     def add_drawable_rec(self, obj : 'SceneComponent'):
         if issubclass(type(obj), DrawableComponent):
-            self._drawables.add(obj)
+            self._drawables.append(obj)
         if obj.any_child():
             for child in obj.children:
                 if issubclass(type(child), SceneComponent):
                     self.add_drawable_rec(child) # type: ignore
+    
     def register_actor(self, actor:'Actor') -> 'Scene':
         self._actors.append(actor)
         return self
+    
     def register_component(self, component : 'SceneComponent'):
         self._objects.append(component) # Add only the root component
         self.add_drawable_rec(component)
@@ -853,6 +856,14 @@ class Scene:
                 light.render()
     
     def draw(self):
+        # Lazy sort
+        for _ in range(Settings.max_swaps_per_frame):
+            for i in range(len(self._drawables)-1):
+                if self._drawables[i]>self._drawables[i+1]:
+                    c=self._drawables[i]
+                    self._drawables[i]=self._drawables[i+1]
+                    self._drawables[i+1]=c
+                    break
         if not self.manual_rendering:
             for background in self._backgrounds:
                 background.draw()
@@ -1110,12 +1121,12 @@ class Pawn(Actor):
     def __init__(self, pos:vec3|None=None, image_name:str="default"):
         Actor.__init__(self, pos=pos)
         self._root:PhysicsComponent = PhysicsComponent(None, pos=pos, mass=0.1)
+        self._character = SpriteComponent(self.root, image_name=image_name)
         self._shadow = SpriteComponent(self.root, image_name="default_shadow")
         self._shadow.size = vec3(10, 10, 10)
         self._shadow.set_inherit_parent_location(False)
         self._shadow.set_draw_offset(vec2(0, 5))
         self._shadow.set_size(vec3(1, 1, 0))
-        self._character = SpriteComponent(self.root, image_name=image_name)
     
     def tick(self, dt:float):
         Actor.tick(self, dt)
@@ -1277,11 +1288,17 @@ class DrawableComponent(SceneComponent, Drawable):
         SceneComponent.__init__(self, parent, pos)
         Drawable.__init__(self)
     
-    def __le__(self, other):
-        return self._pos.y<=other._pos.y
+    def __le__(self, other:'DrawableComponent'):
+        a=self.get_world_position()
+        b=other.get_world_position()
+        return a.z+a.y<=b.z+b.y
     
-    def __lt__(self, other):
-        return self._pos.y<other._pos.y
+    def __lt__(self, other:'DrawableComponent'):
+        a=self.get_world_position()
+        b=other.get_world_position()
+        if (a.z-b.z)<=0.01:
+            return a.y<b.y
+        return a.z<b.z
 
 
 class Light(DrawableComponent):
