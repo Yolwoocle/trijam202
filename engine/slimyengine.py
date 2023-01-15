@@ -856,7 +856,7 @@ class Scene:
                 light.render()
     
     def draw(self):
-        # Lazy sort
+        # Lazy bubble sort with only few swaps per frame
         for _ in range(Settings.max_swaps_per_frame):
             for i in range(len(self._drawables)-1):
                 if self._drawables[i]>self._drawables[i+1]:
