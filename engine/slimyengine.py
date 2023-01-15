@@ -14,7 +14,6 @@ import threading
 
 import pygame
 import pygame_gui
-from sortedcontainers import SortedList, SortedDict
 
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     INSTALLED=True
