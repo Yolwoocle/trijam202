@@ -8,6 +8,7 @@ game.set_debug(True)
 game.load_image("player", "assets/art/player.png")
 game.load_image("cement_mixer", "assets/art/cement_mixer.png")
 game.load_image("speech_bubble", "assets/art/speech_bubble.png")
+game.load_font("game_font", "data/debug_font.ttf")
 
 world = game.get_world()
 

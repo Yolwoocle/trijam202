@@ -362,6 +362,37 @@ class Image:
     def path(self, val):
         self._path = val
 
+class Font:
+    def __init__(self, name:str, path:str, data:pygame.font.Font, size:int, flags:int=0):
+        self._name = name
+        self._path = path
+        self._data = data
+        self._size = size
+        self._flags = flags
+    
+    def set_data(self, data:pygame.font.Font):
+        self._data = data
+
+    def get_data(self) -> pygame.font.Font:
+        if not self._data: raise RuntimeError("Uninitialized font")
+        return self._data
+    
+    @property
+    def data(self) -> pygame.font.Font:
+        return self.get_data()
+
+    @property
+    def path(self):
+        return self._path
+    
+    @path.setter
+    def path(self, val):
+        self._path = val
+    
+    @property
+    def size(self):
+        return self._size
+
 class Tileset:
     def __init__(self, name:str, path:str, tile_width:int, tile_height:int) -> None:
         self.global_image = Globals.game.load_image("tileset_"+name, path)
@@ -470,7 +501,7 @@ class Object:
 
 class Settings:
     optimize_particles_alpha = False
-    max_swaps_per_frame = 1
+    max_swaps_per_frame = 10
 
 class Globals:
     game : 'Game' = None                # type: ignore
@@ -483,7 +514,7 @@ class Game:
         self._world = World()
         self.size = size
         self.title = ""
-        self._fonts : dict[str, pygame.font.Font] = {}
+        self._fonts : dict[str, dict[size, Font]] = {}
         self._clock : pygame.time.Clock = pygame.time.Clock()
         self._start_time : int = time.time_ns()
         self._ctime : float = 0.0
@@ -504,6 +535,7 @@ class Game:
 
         self._frame_debugs = []
         self.debug_infos:dict[str, str] = {"fps": "0", "deltatime": "0"}
+        self._debug_font:Font = None
         self._no_debug = False
     
     def init(self, title="Slimy Engine"):
@@ -515,7 +547,7 @@ class Game:
         self._clock = pygame.time.Clock()
         self._global_clock = pygame.time.Clock()
         self._start_time = time.time_ns()
-        self.load_font("debug_default", "data/debug_font.ttf")
+        self._debug_font = self.load_font("debug_default", "data/debug_font.ttf")
 
         self.load_image("default", "data/default.png")
         self.load_image("default_shadow", "data/default_shadow.png")
@@ -548,11 +580,25 @@ class Game:
         self._perioric_functions.append([self._ctime, interval, function])
         return True
     
-    def load_font(self, name, path, size=28, force_reload=False):
-        if (not self._fonts.get(name)) or force_reload:
-            self._fonts[name] = pygame.font.Font(self.resource_path(path), size)
-            return True
-        return False
+    def load_font(self, name, path:str|None=None, size=28, force_reload=False):
+        if self._fonts.get(name):
+            fonts = self._fonts[name]
+            if (size in fonts) and (not force_reload):
+                return fonts[size]
+            else:
+                p=self.resource_path(next(iter(self._fonts[name].values())).path)
+                f = Font(name, p, pygame.font.Font(p, size), size)
+                self._fonts[name][size]=f
+                return f
+        else:
+            if path:
+                f = Font(name, path, pygame.font.Font(path, size), size)
+                self._fonts[name] = {}
+                self._fonts[name][size]=f
+                return f
+            else:
+                log(f"Unable to load font {name}, no path provided", logTypes.error)
+                return None
     
     def resource_path(self, relative_path):
         try:
@@ -694,7 +740,7 @@ class Game:
                 self.debug_infos["deltatime"] = str(round(self._clock.get_time(), 1))
                 for debug in self.debug_infos:
                     txt = str(debug) + ": " + str(self.debug_infos[debug])
-                    img = self._fonts["debug_default"].render(txt, True, (255, 255, 255))
+                    img = self._debug_font.data.render(txt, True, (255, 255, 255))
                     rect = img.get_rect()
                     self.screen.blit(img, (self.size[0]-rect.width-10, current_height))
                     current_height+=rect.height+5
@@ -885,10 +931,12 @@ class Scene:
             Globals.game.screen.blit(self._lightmap, (0, 0), special_flags=pygame.BLEND_MULT)
     
     def update(self, dt:float):
-        for obj in self._objects:
-            obj.update()
+        # for actor in self._actors:
+        #     actor.pre_tick(dt)
         for actor in self._actors:
             actor.tick(dt)
+        for obj in self._objects:
+            obj.update()
     
     def clear(self):
         self._backgrounds.clear()
@@ -1114,6 +1162,9 @@ class Actor(Object):
     def root(self) -> 'SceneComponent':
         return self._root
     
+    def pre_tick(self, dt:float):
+        pass
+
     def tick(self, dt:float):
         pass
 
@@ -1123,14 +1174,11 @@ class Pawn(Actor):
         self._root:PhysicsComponent = PhysicsComponent(None, pos=pos, mass=0.1)
         self._character = SpriteComponent(self.root, image_name=image_name)
         self._shadow = SpriteComponent(self.root, image_name="default_shadow")
-        self._shadow.size = vec3(10, 10, 10)
-        self._shadow.set_inherit_parent_location(False)
         self._shadow.set_draw_offset(vec2(0, 5))
-        self._shadow.set_size(vec3(1, 1, 0))
     
     def tick(self, dt:float):
         Actor.tick(self, dt)
-        self._shadow._pos = vec3(self.root.get_world_position().x, self.root.get_world_position().y, Globals.game._world._physics_world.line_trace(self.root.get_local_position(), vec3(0, 0, -1)).z)
+        self._shadow.set_world_position(vec3(self.root.get_world_position().x, self.root.get_world_position().y-0.01, Globals.game._world._physics_world.line_trace(self.root.get_local_position(), vec3(0, 0, -1)).z))
 
 
 class Component:
@@ -1172,11 +1220,16 @@ class SceneComponent(Component):
     def get_local_position(self):
         return self._pos
     
-    def set_local_position(self, val):
+    def set_local_position(self, val:vec3) -> 'SceneComponent':
         self._pos = val
         self._valid = False
         # for c in self._children:
         #     c.invalidate()
+        return self
+    
+    def set_world_position(self, val:vec3) -> 'SceneComponent':
+        self._pos = val-self._parent_pos
+        return self
     
     def set_inherit_parent_location(self, val:bool) -> None:
         self._inherit_parent_position = val
@@ -1278,6 +1331,7 @@ class OrthographicCamera(Camera):
 
 class Drawable():
     def __init__(self):
+        self._z_bias=0
         pass
     
     def draw(self):
@@ -1287,16 +1341,20 @@ class DrawableComponent(SceneComponent, Drawable):
     def __init__(self, parent=None, pos=vec3()):
         SceneComponent.__init__(self, parent, pos)
         Drawable.__init__(self)
-    
-    def __le__(self, other:'DrawableComponent'):
-        a=self.get_world_position()
-        b=other.get_world_position()
-        return a.z+a.y<=b.z+b.y
+        
+    # def __le__(self, other:'DrawableComponent'):
+    #     a=self.get_world_position()
+    #     b=other.get_world_position()
+    #     # if (a.z-b.z)<=0.005:
+    #         # return a.y<=b.y
+    #     return a.z+a.y<=b.z+b.y
     
     def __lt__(self, other:'DrawableComponent'):
         a=self.get_world_position()
         b=other.get_world_position()
-        if (a.z-b.z)<=0.01:
+        if abs(a.z-b.z)<=0.01:
+            if self._z_bias!=other._z_bias:
+                return self._z_bias<other._z_bias
             return a.y<b.y
         return a.z<b.z
 
@@ -1653,7 +1711,7 @@ class Solver:
 
 class PhysicsComponent(DrawableComponent, SceneComponent):
     def __init__(self, parent, pos=None, mass:float=1, world:None|World=None):
-        SceneComponent.__init__(self, parent, pos)
+        DrawableComponent.__init__(self, parent, pos)
         self._physics_world : PhysicsWorld = world.get_physics_world() if world else Globals.game.get_world().get_physics_world()
         self.mass = mass
         self.vel = vec3()
@@ -1760,6 +1818,7 @@ class SpriteComponent(DrawableComponent):
         self.draw_size = size
         self.sprite = Globals.game.load_image(image_name, size=self.draw_size)
         self._size_locked = False
+        self._skip_resize = False
         self._draw_offset:vec2 = vec2()
     
     def draw(self):
@@ -1768,7 +1827,7 @@ class SpriteComponent(DrawableComponent):
             draw_pos = Globals.game.camera.world_to_screen(self.get_world_position())
             self.draw_size = Globals.game.camera.world_size2_to_screen(self.size.xy)
             Globals.game.draw_debug_box(self.get_world_position()-self.size/2, self.get_world_position()+self.size/2, (0, 255, 100), offset=self._draw_offset)
-            if self.sprite.size != self.draw_size:
+            if not self._skip_resize and self.sprite.size != self.draw_size:
                 if (not self._size_locked):
                     # log("Size if wrong, reloading sprite", logTypes.warning)
                     self.sprite = Globals.game.load_image(self.sprite.name, self.sprite.path, self.draw_size)

@@ -5,6 +5,7 @@ class Player(Pawn):
     def __init__(self, pos: vec3 | None = None):
         Pawn.__init__(self, pos, "player")
         self._character.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
+        self._shadow.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
         self._root.mass=0.01
         self._game = Globals.game
     
