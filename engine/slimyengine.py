@@ -1779,7 +1779,33 @@ class SpriteComponent(DrawableComponent):
     def set_draw_offset(self, offset:vec2):
         self._draw_offset = offset
 
-
+class AnimatedSprite(SpriteComponent):
+    def __init__(self, parent, pos=vec3(), size=vec2(1, 1), image_names:list[str]=["default"], sprite_time:float=0.5):
+        assert len(image_names)>0, "AnimatedSprite must have at least one image"
+        self.draw_size = Globals.game.camera.world_size2_to_screen(size.xy)
+        self._sprites = [Globals.game.load_image(image_name, size=self.draw_size) for image_name in image_names]
+        SpriteComponent.__init__(self, parent=parent, pos=pos, size=size, image_name=image_names[0])
+        self._current_sprite = 0
+        self._time = 0
+        self._time_per_sprite = sprite_time
+        self._loop = True
+        self._playing = True
+    
+    def draw(self):
+        if self._playing:
+            self._time += Globals.game.get_delta_time()
+            if self._time > self._time_per_sprite:
+                self._time -= self._time_per_sprite
+                self._current_sprite += 1
+                if self._current_sprite >= len(self._sprites):
+                    if self._loop:
+                        self._current_sprite = 0
+                    else:
+                        self._current_sprite = len(self._sprites)-1
+                        self._playing = False
+        self.sprite = self._sprites[self._current_sprite]
+        SpriteComponent.draw(self)
+        
 
 class Widget:
     def __init__(self, parent, pos:None|vec2=None, size:None|vec2=None, color=vec3(255, 255, 255)):
