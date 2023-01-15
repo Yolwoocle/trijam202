@@ -11,5 +11,5 @@ exit /b
 
 :: Configure
 :configure
-pyi-makespec --onefile --splash data/splash.png --log-level WARN --windowed --icon=icon.ico --add-data "data/*;data" --add-data "assets/*;assets" --name=Trijam202 game.py
+pyi-makespec --onefile --splash data/splash.png --log-level WARN --windowed --icon=icon.ico --add-data "data/*;data" --add-data "assets/art/*;assets/art" --name=Trijam202 game.py
 goto build

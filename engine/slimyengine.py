@@ -591,7 +591,7 @@ class Game:
                 return f
         else:
             if path:
-                f = Font(name, path, pygame.font.Font(path, size), size)
+                f = Font(name, path, pygame.font.Font(self.resource_path(path), size), size)
                 self._fonts[name] = {}
                 self._fonts[name][size]=f
                 return f
