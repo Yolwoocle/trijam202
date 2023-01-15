@@ -83,5 +83,30 @@ game.quit()
 ## Le déroulement d'une frame
 
 1) Appel par le client de ```Game.begin_frame()```
+     - Récupération des évènement clavier via pygame
+     - Update interne + GUI concernant les inputs
+     - Effaçage de l'écran avec la couleur d'arrière-plan 
 2) Appel par le client de ```Game.tick()```
+    - Si l'application a reçu un message de fermeture, return
+    - Mise à jour du temps depuis lancement
+    - Appel des fonctions périodiques au besoin (possibilité d'exécuter automatiquement une fonction toutes les x secondes)
+    - Update GUI
+    - ```World``` tick
+      - ```PhysicsWorld``` tick
+        - Dessin des bordures de la map (si limites non-infinies)
+        - Tick pour chaque ```PhysicsObject``` (mise à jour de l'accélération, la vélocité et la position)
+      - ```Scene``` update
+        - Tick pour chaque acteur
+        - Update pour chaque objet (mise à jour du cache pour ```parent_pos``` essentiellement)
+      - Pour chaque ```ParticleSystem``` tick
+    - GUI draw
+    - ```World``` draw
+      - ```Scene``` draw
+        - Tri selon les méthodes de comparaison de ```DrawableComponent```
+        - Draw de chaque arrière-plan (```SpriteComponent```) (les "décors" traités séparemment, *a priori* des sprites couvrants toute la map, car toujours....en arrière-plan x))
+        - Draw de chaque ```Drawable``` registered
+      - ```Scene``` light pass
+    - Debug draw uniquement si ```INSTALLED``` n'est pas défini
 3) Appel par le client de ```Game.end_frame()```
+    - Affichage de la nouvelle image calculée (flip)
+    - Calcul du nouveau dt + sleep (pour respecter le framerate) en attendant de commencer la prochaine frame

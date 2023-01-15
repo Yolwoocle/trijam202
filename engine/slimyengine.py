@@ -850,14 +850,15 @@ class World:
             self._physics_world.tick(delta_time)
         if self._current_scene is not None:
             self._current_scene.update(delta_time)
-            self._current_scene.draw()
-            self._current_scene.light_pass()
         for system in self._particle_systems:
             system.tick(delta_time)
     
     def draw(self):
         for system in self._particle_systems:
             system.draw()
+        if self._current_scene is not None:
+            self._current_scene.draw()
+            self._current_scene.light_pass()
         
         Globals.game.debug_infos["particles_count"] = sum([s.get_particles_count() for s in self._particle_systems])
 
@@ -933,10 +934,10 @@ class Scene:
     def update(self, dt:float):
         # for actor in self._actors:
         #     actor.pre_tick(dt)
-        for actor in self._actors:
-            actor.tick(dt)
         for obj in self._objects:
             obj.update()
+        for actor in self._actors:
+            actor.tick(dt)
     
     def clear(self):
         self._backgrounds.clear()
