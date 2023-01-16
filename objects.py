@@ -11,14 +11,20 @@ class CementMixer(Placeable):
     def __init__(self, pos: vec3 | None = None):
         Placeable.__init__(self, pos)
         self._root = AnimatedSprite(None, pos, image_names=["cement_mixer"], sprite_time=0.5)
-        self._root.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
+        self._root.set_size(vec3(SPRITE_16_SIZE, PIXEL_SIZE*19, SPRITE_16_SIZE))
         self._tooltip = Tooltip(self._root, vec3(0, 0, 0))
         self._t = 0.
         self._tooltip.render()
     
     def tick(self, dt:float):
         self._t += dt
-        self._tooltip.set_local_position(vec3(0, 0, 2+0.6*math.sin(5*self._t)**5))
+        self._tooltip.set_local_position(vec3(0, 0, 1.8+0.1*math.sin(5*self._t)))
+        if Math.distance_manhattan_vec3(Globals.game.get_world().get_player_actor().root.get_world_position(), self._root.get_world_position())<3:
+            self._tooltip._bg.show()
+            self._tooltip._txt_surface.show()
+        else:
+            self._tooltip._bg.hide()
+            self._tooltip._txt_surface.hide()
     
     def show_tooltip(self):
         pass
@@ -27,13 +33,24 @@ class Tooltip(DrawableComponent):
     def __init__(self, parent: Union['SceneComponent', None] = None, pos: vec3 | None = None):
         DrawableComponent.__init__(self, parent, pos)
         self._bg = SpriteComponent(self, vec3(0, 0, 0), image_name="speech_bubble")
-        self._bg.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
+        self._bg.set_size(vec3(18*PIXEL_SIZE, 21*PIXEL_SIZE, SPRITE_16_SIZE))
         self._bg._z_bias=-1
-        self._txt:str = "Press E..."
+        self._txt:str = "PRESS E"
         self._font = Globals.game.load_font("game_font", size=10)
-        self._txt_surface = SpriteComponent(self._bg, vec3(0, 0, 0)).set_local_position(vec3(self._bg.get_size().x/2, self._bg.get_size().y/2, 0))
-        self._txt_surface.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
+        self._txt_surface = SpriteComponent(self._bg, vec3(0, 0, 0))
+        # self._txt_surface.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
         self._txt_surface._skip_resize=True
+        Globals.game.register_event_listener(EventListenerFunctionCallback(EventWindowResize, self.on_resize))
     
-    def render(self):
-        self._txt_surface.sprite = Image("tooltip", vec2(), "", self._font.data.render(self._txt, True, (10, 10, 10)))
+    def render(self):        
+        txt_data = self._font.data.render(self._txt, True, (10, 10, 10))
+        dim = vec2(Globals.game.camera.world_size2_to_screen(self._bg.get_size().xy))
+        surf = pygame.surface.Surface(dim).convert_alpha()
+        surf.fill((255, 255, 255, 0))
+        surf.blit(txt_data, dim/2-vec2(txt_data.get_size()[0], txt_data.get_size()[1])/2 - vec2(0, 0.1)*dim.y)
+        self._txt_surface.sprite = Image("tooltip", dim, "", surf)
+    
+    def on_resize(self, event:EventWindowResize):
+        size = event.get_size()
+        self._font = Globals.game.load_font("game_font", size=size.y/50)
+        self.render()

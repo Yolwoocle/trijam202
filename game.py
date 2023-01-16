@@ -3,7 +3,7 @@ from player import *
 from objects import *
 from globals import *
 
-game = Game().init().target_fps(60).set_background_color(Colors.darkgrey)
+game = Game().init("Trijam 202").target_fps(60).set_background_color(Colors.darkgrey)
 game.set_debug(True)
 game.load_image("player", "assets/art/player.png")
 game.load_image("cement_mixer", "assets/art/cement_mixer.png")

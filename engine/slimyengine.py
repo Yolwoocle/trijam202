@@ -258,6 +258,16 @@ class Colors:
     def get_random():
         return (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
+class Key:
+    unknown = pygame.K_UNKNOWN
+    up = pygame.K_UP
+    left = pygame.K_LEFT
+    down = pygame.K_DOWN
+    right = pygame.K_RIGHT
+    space = pygame.K_SPACE
+    leftCtrl = pygame.K_LCTRL
+    rightCtrl = pygame.K_RCTRL
+
 class Math:
     @staticmethod
     def lerp(a, b, k):
@@ -267,6 +277,14 @@ class Math:
     def lerp_squared(a, b, k) -> vec:
         c:vec = b - a
         return k * c * c.length() + a
+    
+    @staticmethod
+    def distance(a:vec, b:vec) -> float:
+        return (b-a).length()
+    
+    @staticmethod
+    def distance_manhattan_vec3(a:vec3, b:vec3) -> float:
+        return abs(b.x-a.x)+abs(b.y-a.y)+abs(b.z-a.z)
 
 class Line2d:
     def __init__(self, point:vec2, dir:vec2) -> None:
@@ -352,6 +370,9 @@ class Image:
         self._data = pygame.transform.scale(self._data, size)
         self.size = size
         return self
+    
+    def get_size(self) -> vec2:
+        return self.size
 
     @property
     def path(self):
@@ -507,12 +528,12 @@ class Globals:
     settings : 'Settings' = Settings()  # type: ignore
 
 class Game:
-    def __init__(self, size:tuple[int, int]=(640, 480)):
+    def __init__(self, size:vec2=(640, 480)):
         if Globals.game: raise RuntimeError("There can exist only one game")
         Globals.game = self
         self._world = World()
-        self.size = size
-        self.title = ""
+        self._size:vec2 = size
+        self._title = ""
         self._fonts : dict[str, dict[size, Font]] = {}
         self._clock : pygame.time.Clock = pygame.time.Clock()
         self._start_time : int = time.time_ns()
@@ -525,6 +546,8 @@ class Game:
         self._images = {}
         self._keydowns:map[int, bool] = {}
         self.active_scene : Scene = Scene()
+        
+        self._event_listeners : dict[Event.__class__, list[EventListener]] = {}
         
         self._running_threads:List['StoppableThread'] = []
         self._perioric_functions:list[list[float, float, callable]] = []    # (last_time_executed, delay, function)
@@ -540,9 +563,9 @@ class Game:
     def init(self, title="Slimy Engine"):
         pygame.init()
         flags = pygame.RESIZABLE | pygame.DOUBLEBUF
-        self.screen = pygame.display.set_mode(self.size, flags)
-        self.title = title
-        pygame.display.set_caption(title)
+        self.screen = pygame.display.set_mode(self._size, flags)
+        self._title = title
+        pygame.display.set_caption(self._title)
         self._clock = pygame.time.Clock()
         self._global_clock = pygame.time.Clock()
         self._start_time = time.time_ns()
@@ -552,7 +575,7 @@ class Game:
         self.load_image("default_shadow", "data/default_shadow.png")
         self.load_image("default_particle", "data/default_particle.png")
 
-        self._gui_manager:pygame_gui.UIManager = pygame_gui.UIManager(self.size)
+        self._gui_manager:pygame_gui.UIManager = pygame_gui.UIManager(self._size)
         self._gui_refs:dict[pygame_gui.core.UIElement, Widget]={}
 
         return self
@@ -575,6 +598,19 @@ class Game:
         self._running_threads.append(thread)
         return self
     
+    def register_event_listener(self, event_listener:'EventListener') -> 'Game':
+        cl = event_listener._event_class
+        if cl not in self._event_listeners:
+            self._event_listeners[cl] = []
+        self._event_listeners[cl].append(event_listener)
+        return self
+    
+    def fire_event(self, event:'Event') -> 'Game':
+        if event.__class__ in self._event_listeners:
+            for listener in self._event_listeners[event.__class__]:
+                listener.trigger(event)
+        return self
+    
     def register_periodic_function(self, function:callable, interval:float) -> bool:
         self._perioric_functions.append([self._ctime, interval, function])
         return True
@@ -583,17 +619,17 @@ class Game:
         if self._fonts.get(name):
             fonts = self._fonts[name]
             if (size in fonts) and (not force_reload):
-                return fonts[size]
+                return fonts[int(size)]
             else:
                 p=self.resource_path(next(iter(self._fonts[name].values())).path)
-                f = Font(name, p, pygame.font.Font(p, size), size)
-                self._fonts[name][size]=f
+                f = Font(name, p, pygame.font.Font(p, int(size)), int(size))
+                self._fonts[name][int(size)]=f
                 return f
         else:
             if path:
-                f = Font(name, path, pygame.font.Font(self.resource_path(path), size), size)
+                f = Font(name, path, pygame.font.Font(self.resource_path(path), int(size)), int(size))
                 self._fonts[name] = {}
-                self._fonts[name][size]=f
+                self._fonts[name][int(size)]=f
                 return f
             else:
                 log(f"Unable to load font {name}, no path provided", logTypes.error)
@@ -661,14 +697,18 @@ class Game:
         self._background_color = color
         return self
     
+    def get_size(self) -> vec2:
+        return self._size
+    
     def update_size(self) -> None:
-        self.camera.update_screen_size(self.size)
-        self.active_scene.update_screen_size(self.size)
-        self._gui_manager.set_window_resolution(self.size)
+        self.camera.update_screen_size(self._size)
+        self.active_scene.update_screen_size(self._size)
+        self._gui_manager.set_window_resolution(self._size)
     
     def on_resize(self, event:pygame.event.Event):
-        self.size = (event.dict['size'][0], event.dict['size'][1])
+        self._size = vec2(event.dict['size'][0], event.dict['size'][1])
         self.update_size()
+        self.fire_event(EventWindowResize(self._size))
         pass
 
     def is_key_down(self, key):
@@ -688,6 +728,7 @@ class Game:
                 pygame.display.update()
             if event.type == pygame.KEYDOWN:
                 self._keydowns[event.key]=True
+                self.fire_event(EventKeyPressed(event.key))
             if event.type == pygame.KEYUP:
                 self._keydowns[event.key]=False
             if event.type == pygame_gui.UI_BUTTON_PRESSED:
@@ -741,7 +782,7 @@ class Game:
                     txt = str(debug) + ": " + str(self.debug_infos[debug])
                     img = self._debug_font.data.render(txt, True, (255, 255, 255))
                     rect = img.get_rect()
-                    self.screen.blit(img, (self.size[0]-rect.width-10, current_height))
+                    self.screen.blit(img, (self._size[0]-rect.width-10, current_height))
                     current_height+=rect.height+5
 
         def draw_debug_vector(self, start : vec3, end : vec3, color=(255,0,0), immediate=False):
@@ -778,6 +819,17 @@ class Game:
             else:
                 self._frame_debugs.append(square)
 
+        def draw_debug_dot(self, pos : vec2, color=(0,0,255), immediate=False, thickness=1):
+            if self._no_debug: return
+            dot = DebugDot(self)
+            dot.pos = pos
+            dot.color = color
+            dot.thickness = thickness
+            if immediate:
+                dot.draw(self.screen)
+            else:
+                self._frame_debugs.append(dot)
+
         def draw_debug_box(self, start : vec3, end : vec3, color=(0,0,255), immediate=False, thickness=1, offset:None|vec2=None):
             if self._no_debug: return
             square = DebugBox(self)
@@ -800,7 +852,7 @@ class Game:
     
     def load_scene(self, scene:'Scene'):
         self.active_scene = scene
-        self.active_scene.active_camera.update_screen_size(vec2(self.size[0], self.size[1]))
+        self.active_scene.active_camera.update_screen_size(self._size)
         return self
     
     def set_debug(self, debug):
@@ -826,6 +878,9 @@ class World:
     
     def get_current_scene(self) -> 'Scene':
         return self._current_scene
+    
+    def get_player_actor(self) -> 'Actor':
+        return self._current_scene.get_player_actor()
 
     def load_scene(self, scene:'Scene') -> 'World':
         self._current_scene = scene
@@ -874,6 +929,8 @@ class Scene:
         self._ambient_light = vec3(1., 1., 1.)
         self._lights : list[Light] = []
         self._lightmap : pygame.Surface = pygame.surface.Surface(vec2(10, 10))
+        
+        self._player_actor : 'Actor' = None
     
     def add_drawable_rec(self, obj : 'SceneComponent'):
         if issubclass(type(obj), DrawableComponent):
@@ -901,6 +958,13 @@ class Scene:
         for light in self._lights:
                 light.render()
     
+    def register_player_actor(self, actor : 'Actor') -> 'Scene':
+        self._player_actor = actor
+        return self
+    
+    def get_player_actor(self) -> 'Actor':
+        return self._player_actor
+    
     def draw(self):
         # Lazy bubble sort with only few swaps per frame
         for _ in range(Settings.max_swaps_per_frame):
@@ -921,8 +985,8 @@ class Scene:
         return self
     
     def light_pass(self):
-        if self._lightmap.get_size()!=Globals.game.size:
-            self._lightmap = pygame.surface.Surface(Globals.game.size)
+        if self._lightmap.get_size()!=Globals.game._size:
+            self._lightmap = pygame.surface.Surface(Globals.game._size)
         self._lightmap.fill(color_from_vec3(self._ambient_light*255))
         if not self.manual_rendering:
             for light in self._lights:
@@ -1147,11 +1211,48 @@ class Client:
 
 class Event:
     def __init__(self):
-        self.consumed = False
+        self._consumed = False
+
+class EventWindowResize(Event):
+    def __init__(self, size:vec2):
+        Event.__init__(self)
+        self._size:vec2 = size
+    
+    def get_size(self) -> vec:
+        return self._size
+
+class EventKeyPressed(Event):
+    def __init__(self, key:int=Key.unknown):
+        Event.__init__(self)
+        pygame.K_RCTRL
+        self._key:int = key
+    
+    def get_key(self) -> int:
+        return self._key
 
 class WidgetClick(Event):
     def __init__(self):
         Event.__init__(self)
+
+class EventListener:
+    def __init__(self, event_class:Event.__class__) -> None:
+        self._event_class : Event.__class__ = event_class
+    
+    def register(self) -> 'EventListener':
+        Globals.game.register_event_listener(self)
+        return self
+    
+    def trigger(self, event:Event):
+        pass
+
+class EventListenerFunctionCallback(EventListener):
+    def __init__(self, event_class:Event.__class__, callback:callable):
+        EventListener.__init__(self, event_class)
+        self._callback = callback
+    
+    def trigger(self, event:Event):
+        self._callback(event)
+
 
 class Actor(Object):
     def __init__(self, pos:vec3|None=None):
@@ -1173,12 +1274,9 @@ class Pawn(Actor):
         Actor.__init__(self, pos=pos)
         self._root:PhysicsComponent = PhysicsComponent(None, pos=pos, mass=0.1)
         self._character = SpriteComponent(self.root, image_name=image_name)
-        self._shadow = SpriteComponent(self.root, image_name="default_shadow")
-        self._shadow.set_draw_offset(vec2(0, 5))
     
     def tick(self, dt:float):
         Actor.tick(self, dt)
-        self._shadow.set_world_position(vec3(self.root.get_world_position().x, self.root.get_world_position().y-0.01, Globals.game._world._physics_world.line_trace(self.root.get_local_position(), vec3(0, 0, -1)).z))
 
 
 class Component:
@@ -1331,11 +1429,22 @@ class OrthographicCamera(Camera):
 
 class Drawable():
     def __init__(self):
-        self._z_bias=0
+        self._z_bias:int = 0
+        self._hidden:bool = False
         pass
+
+    def set_z_bias(self, bias:int) -> 'Drawable':
+        self._z_bias = bias
+        return self
     
     def draw(self):
         return
+    
+    def show(self):
+        self._hidden = False
+    
+    def hide(self):
+        self._hidden = True
 
 class DrawableComponent(SceneComponent, Drawable):
     def __init__(self, parent=None, pos=vec3()):
@@ -1456,7 +1565,7 @@ class ParticleEmitter(Drawable):
         assert self._system!=None
         screen = Globals.game.screen
         camera = Globals.game.camera
-        screen_size = Globals.game.size
+        screen_size = Globals.game.get_size()
         for particle in self._particles:
             id, is_alive, position, _, color, _, _ = particle
             if not is_alive.get(): continue
@@ -1559,6 +1668,17 @@ class DebugRectangle(DebugDraw):
         if self.start==self.end: return
         pygame.draw.rect(screen, self.color, pygame.Rect(self.start.x, self.start.y, self.end.x-self.start.x, self.end.y-self.start.y), self.thickness)
 
+class DebugDot(DebugDraw):
+    def __init__(self, game) -> None:
+        DebugDraw.__init__(self, game)
+        self.pos:vec2 = vec2()
+        self.color:Colors.Color = Colors.Color(255, 0, 0)
+        self.thickness = 1
+    
+    def draw(self, screen):
+        DebugDraw.draw(self, screen)
+        pygame.draw.circle(screen, self.color, self.pos, self.thickness*10)
+
 class DebugBox(DebugDraw):
     def __init__(self, game) -> None:
         DebugDraw.__init__(self, game)
@@ -1624,8 +1744,11 @@ class PhysicsWorld:
         self.tmp_tick=time.time_ns()
         # dt = (self.tmp_tick-self.last_tick)*1.0E-9
         self.last_tick=self.tmp_tick
-        if self._draw_borders and self.limits[0].length_squared()<math.inf and self.limits[1].length_squared()<math.inf:
-            Globals.game.draw_debug_box(set_z(self.limits[0], 0), set_z(self.limits[1], 0), vec3(255, 0, 0), thickness=2)
+        if self._draw_borders:
+            a = set_z(self.limits[0], 0)
+            b = set_z(self.limits[1], 0)
+            if a.length_squared()<math.inf and b.length_squared()<math.inf:
+                Globals.game.draw_debug_box(a, b, vec3(255, 0, 0), thickness=2)
         
         for obj in self.objects:
             obj.tick(dt)
@@ -1823,10 +1946,11 @@ class SpriteComponent(DrawableComponent):
     
     def draw(self):
         Drawable.draw(self)
-        if self.sprite:
+        if self.sprite and not self._hidden:
             draw_pos = Globals.game.camera.world_to_screen(self.get_world_position())
-            self.draw_size = Globals.game.camera.world_size2_to_screen(self.size.xy)
-            Globals.game.draw_debug_box(self.get_world_position()-self.size/2, self.get_world_position()+self.size/2, (0, 255, 100), offset=self._draw_offset)
+            self.draw_size = Globals.game.camera.world_size2_to_screen(self.size.xy) if not self._skip_resize else self.sprite.get_size()
+            # Globals.game.draw_debug_dot(draw_pos+self._draw_offset)
+            # Globals.game.draw_debug_rectangle(draw_pos - self.draw_size.xy/2 + self._draw_offset, draw_pos + self.draw_size.xy/2 + self._draw_offset, (255, 0, 0))
             if not self._skip_resize and self.sprite.size != self.draw_size:
                 if (not self._size_locked):
                     # log("Size if wrong, reloading sprite", logTypes.warning)
