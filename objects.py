@@ -19,7 +19,7 @@ class CementMixer(Placeable):
     def tick(self, dt:float):
         self._t += dt
         self._tooltip.set_local_position(vec3(0, 0, 1.8+0.1*math.sin(5*self._t)))
-        if Math.distance_manhattan_vec3(Globals.game.get_world().get_player_actor().root.get_world_position(), self._root.get_world_position())<3:
+        if Math.distance_max_vec3(Globals.game.get_world().get_player_actor().root.get_world_position(), self._root.get_world_position())<3:
             self._tooltip._bg.show()
             self._tooltip._txt_surface.show()
         else:

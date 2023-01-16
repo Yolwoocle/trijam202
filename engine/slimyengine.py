@@ -286,6 +286,10 @@ class Math:
     def distance_manhattan_vec3(a:vec3, b:vec3) -> float:
         return abs(b.x-a.x)+abs(b.y-a.y)+abs(b.z-a.z)
 
+    @staticmethod
+    def distance_max_vec3(a:vec3, b:vec3) -> float:
+        return max(abs(b.x-a.x),abs(b.y-a.y),abs(b.z-a.z))
+
 class Line2d:
     def __init__(self, point:vec2, dir:vec2) -> None:
         self._pt  = point
