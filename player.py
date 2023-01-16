@@ -1,6 +1,7 @@
 from engine.slimyengine import *
 from globals import *
 
+
 class Player(Pawn):
     def __init__(self, pos: vec3 | None = None):
         Pawn.__init__(self, pos, "player")

@@ -2,6 +2,7 @@ from engine.slimyengine import *
 from globals import *
 import math
 
+
 class Placeable(Actor):
     def __init__(self, pos: vec3 | None = None):
         Actor.__init__(self, pos)

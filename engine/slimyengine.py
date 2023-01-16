@@ -887,14 +887,25 @@ class World:
         return self._current_scene.get_player_actor()
 
     def load_scene(self, scene:'Scene') -> 'World':
-        self._current_scene = scene
+        self._current_scene = scene()
+        self._current_scene.load()
+        return self
+
+    def unload_scene(self, scene:'Scene') -> 'World':
+        scene.unload()
+        if scene==self._current_scene: self._current_scene = None
         return self
     
     def get_physics_world(self) -> 'PhysicsWorld':
         return self._physics_world
     
     def enable_physics(self) -> 'World':
-        self._physics_world = PhysicsWorld()
+        if not self._physics_world:
+            self._physics_world = PhysicsWorld()
+        return self
+
+    def disable_physics(self) -> 'World':
+        self._physics_world = None
         return self
 
     def register_particle_system(self, obj:'ParticleSystem') -> 'World':
@@ -935,6 +946,12 @@ class Scene:
         self._lightmap : pygame.Surface = pygame.surface.Surface(vec2(10, 10))
         
         self._player_actor : 'Actor' = None
+    
+    def load(self) -> 'Scene':
+        return self
+
+    def unload(self) -> 'Scene':
+        return self
     
     def add_drawable_rec(self, obj : 'SceneComponent'):
         if issubclass(type(obj), DrawableComponent):
@@ -1049,10 +1066,6 @@ class Scene:
     
     def get_light_map(self) -> pygame.Surface:
         return self._lightmap
-
-class Level:
-    def __init__(self) -> None:
-        pass
 
 
 # Networking
@@ -2046,7 +2059,7 @@ class Button(Widget):
         self._text = text
         self._text_color = vec3(0, 0, 0)
         self._text_size = 1
-        self._callback = None
+        self._callback:callable = None
         self._button:None|pygame_gui.elements.UIButton = None
     
     def register(self) -> 'Button':
@@ -2060,7 +2073,7 @@ class Button(Widget):
         # log(f"{}")
         return self
     
-    def set_callback(self, callback) -> 'Button':
+    def set_callback(self, callback:callable) -> 'Button':
         self._callback = callback
         return self
     
