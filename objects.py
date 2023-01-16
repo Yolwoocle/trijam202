@@ -20,11 +20,9 @@ class CementMixer(Placeable):
         self._t += dt
         self._tooltip.set_local_position(vec3(0, 0, 1.8+0.1*math.sin(5*self._t)))
         if Math.distance_max_vec3(Globals.game.get_world().get_player_actor().root.get_world_position(), self._root.get_world_position())<3:
-            self._tooltip._bg.show()
-            self._tooltip._txt_surface.show()
+            self._tooltip.show()
         else:
-            self._tooltip._bg.hide()
-            self._tooltip._txt_surface.hide()
+            self._tooltip.hide()
     
     def show_tooltip(self):
         pass
@@ -48,9 +46,22 @@ class Tooltip(DrawableComponent):
         surf = pygame.surface.Surface(dim).convert_alpha()
         surf.fill((255, 255, 255, 0))
         surf.blit(txt_data, dim/2-vec2(txt_data.get_size()[0], txt_data.get_size()[1])/2 - vec2(0, 0.1)*dim.y)
-        self._txt_surface.sprite = Image("tooltip", dim, "", surf)
+        self._txt_surface.set_sprite(Image("tooltip", dim, "", surf))
     
     def on_resize(self, event:EventWindowResize):
         size = event.get_size()
         self._font = Globals.game.load_font("game_font", size=size.y/50)
         self.render()
+    
+    def show(self):
+        if not Drawable.show(self): return
+        self._bg.show()
+        self._txt_surface.show()
+        pass
+
+    def hide(self):
+        if not Drawable.hide(self): return
+        self._bg.hide()
+        self._txt_surface.hide()
+        self._visible=False
+        pass

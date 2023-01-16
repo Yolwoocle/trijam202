@@ -1434,7 +1434,7 @@ class OrthographicCamera(Camera):
 class Drawable():
     def __init__(self):
         self._z_bias:int = 0
-        self._hidden:bool = False
+        self._visible:bool = True
         pass
 
     def set_z_bias(self, bias:int) -> 'Drawable':
@@ -1444,11 +1444,18 @@ class Drawable():
     def draw(self):
         return
     
-    def show(self):
-        self._hidden = False
+    def is_visible(self) -> bool:
+        return self._visible
     
-    def hide(self):
-        self._hidden = True
+    def show(self) -> bool:
+        if self._visible: return False
+        self._visible = True
+        return True
+    
+    def hide(self) -> bool:
+        if not self._visible: return False
+        self._visible = False
+        return True
 
 class DrawableComponent(SceneComponent, Drawable):
     def __init__(self, parent=None, pos=vec3()):
@@ -1942,29 +1949,48 @@ class SpriteComponent(DrawableComponent):
     def __init__(self, parent, pos=vec3(), size=vec2(1, 1), image_name="default"):
         SceneComponent.__init__(self, parent=parent, pos=pos)
         Drawable.__init__(self)
-        self.draw_size = size
-        self.sprite = Globals.game.load_image(image_name, size=self.draw_size)
+        self._draw_size = size
+        self._sprite = Globals.game.load_image(image_name, size=self._draw_size)
         self._size_locked = False
         self._skip_resize = False
         self._draw_offset:vec2 = vec2()
+        self._anchor:vec2 = vec2(0.5, 0.5)
     
     def draw(self):
         Drawable.draw(self)
-        if self.sprite and not self._hidden:
+        if self._sprite and self.is_visible():
             draw_pos = Globals.game.camera.world_to_screen(self.get_world_position())
-            self.draw_size = Globals.game.camera.world_size2_to_screen(self.size.xy) if not self._skip_resize else self.sprite.get_size()
-            # Globals.game.draw_debug_dot(draw_pos+self._draw_offset)
-            # Globals.game.draw_debug_rectangle(draw_pos - self.draw_size.xy/2 + self._draw_offset, draw_pos + self.draw_size.xy/2 + self._draw_offset, (255, 0, 0))
-            if not self._skip_resize and self.sprite.size != self.draw_size:
+            self._draw_size = Globals.game.camera.world_size2_to_screen(self.size.xy) if not self._skip_resize else self._sprite.get_size()
+            Globals.game.draw_debug_dot(draw_pos+self._draw_offset)
+            t = vec2(self._draw_size.x*self._anchor.x, self._draw_size.y*self._anchor.y)
+            Globals.game.draw_debug_rectangle(draw_pos - t + self._draw_offset, draw_pos - t + self._draw_size + self._draw_offset, (255, 0, 0))
+            if not self._skip_resize and self._sprite.size != self._draw_size:
                 if (not self._size_locked):
                     # log("Size if wrong, reloading sprite", logTypes.warning)
-                    self.sprite = Globals.game.load_image(self.sprite.name, self.sprite.path, self.draw_size)
+                    self._sprite = Globals.game.load_image(self._sprite.name, self._sprite.path, self._draw_size)
                 else:
-                    self.sprite.resize(self.draw_size)
-            Globals.game.screen.blit(self.sprite.get_data(), draw_pos - self.draw_size.xy/2 + self._draw_offset)
+                    self._sprite.resize(self._draw_size)
+            Globals.game.screen.blit(self._sprite.get_data(), draw_pos - vec2(self._draw_size.x*(1-self._anchor.x), self._draw_size.y*self._anchor.y) + self._draw_offset)
+    
+    def get_sprite(self) -> Image:
+        return self._sprite
+    
+    def set_sprite(self, sprite:Image) -> 'SpriteComponent':
+        self._sprite = sprite
+        return self
     
     def set_draw_offset(self, offset:vec2):
         self._draw_offset = offset
+    
+    def get_draw_offset(self) -> vec2:
+        return self._draw_offset
+    
+    def set_anchor(self, anchor:vec2) -> 'SpriteComponent':
+        self._anchor = anchor
+        return self
+    
+    def get_anchor(self) -> vec2:
+        return self._anchor
 
 class AnimatedSprite(SpriteComponent):
     def __init__(self, parent, pos=vec3(), size=vec2(1, 1), image_names:list[str]=["default"], sprite_time:float=0.5):
