@@ -28,11 +28,17 @@ class Map(Drawable):
         old_obj = self.grid[x][y]
         
         self.grid[x][y] = tile
-        if type(tile) == type:
+        if type(tile) != type:
             self.dynamic_tiles.append(tile)
         
-        if type(old_obj) == type:
+        if type(old_obj) != type:
             old_obj._delete_me = True 
-        
+            
         return old_obj
+    
+
+    def tick(self):
+        ...
+        
+        # TODO: go through all dynamic tiles & update them, delete if needed
 
