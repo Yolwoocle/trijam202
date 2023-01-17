@@ -19,9 +19,8 @@ class MainMenu(Scene):
     def unload(self) -> 'MainMenu':
         self._play_btn._button.remove()
         self._play_btn._button.kill()
+        return self
     
     def on_click_play(self):
-        log("Play pressed")
-        # scene = TestScene()
         self._world.unload_scene(self)
         self._world.load_scene(TestScene)

@@ -12,6 +12,7 @@ from pathlib import Path
 import socket
 import threading
 
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = '1'
 import pygame
 import pygame_gui
 
@@ -289,6 +290,10 @@ class Math:
     @staticmethod
     def distance_max_vec3(a:vec3, b:vec3) -> float:
         return max(abs(b.x-a.x),abs(b.y-a.y),abs(b.z-a.z))
+    
+    @staticmethod
+    def snap_to_grid(value:float, pas:float) -> float:
+        return int(value/pas)*pas
 
 class Line2d:
     def __init__(self, point:vec2, dir:vec2) -> None:
@@ -532,7 +537,7 @@ class Globals:
     settings : 'Settings' = Settings()  # type: ignore
 
 class Game:
-    def __init__(self, size:vec2=(640, 480)):
+    def __init__(self, size:vec2=vec2(640, 480)):
         if Globals.game: raise RuntimeError("There can exist only one game")
         Globals.game = self
         self._world = World()
@@ -549,7 +554,6 @@ class Game:
         self._events = []
         self._images = {}
         self._keydowns:map[int, bool] = {}
-        self.active_scene : Scene = Scene()
         
         self._event_listeners : dict[Event.__class__, list[EventListener]] = {}
         
@@ -705,8 +709,7 @@ class Game:
         return self._size
     
     def update_size(self) -> None:
-        self.camera.update_screen_size(self._size)
-        self.active_scene.update_screen_size(self._size)
+        self.get_world().update_screen_size(self._size)
         self._gui_manager.set_window_resolution(self._size)
     
     def on_resize(self, event:pygame.event.Event):
@@ -786,7 +789,7 @@ class Game:
                     txt = str(debug) + ": " + str(self.debug_infos[debug])
                     img = self._debug_font.data.render(txt, True, (255, 255, 255))
                     rect = img.get_rect()
-                    self.screen.blit(img, (self._size[0]-rect.width-10, current_height))
+                    self.screen.blit(img, (self._size.x-rect.width-10, current_height))
                     current_height+=rect.height+5
 
         def draw_debug_vector(self, start : vec3, end : vec3, color=(255,0,0), immediate=False):
@@ -854,10 +857,10 @@ class Game:
         return
     
     
-    def load_scene(self, scene:'Scene'):
-        self.active_scene = scene
-        self.active_scene.active_camera.update_screen_size(self._size)
-        return self
+    # def load_scene(self, scene:'Scene'):
+    #     self.active_scene = scene
+    #     self.active_scene.get_active_camera().update_screen_size(self._size)
+    #     return self
     
     def set_debug(self, debug):
         self._no_debug = not debug
@@ -865,7 +868,7 @@ class Game:
     
     @property
     def camera(self) -> 'Camera':
-        return self.active_scene.active_camera
+        return self.get_world().get_current_scene().get_active_camera()
     
     def host(self, port:int=5050) -> 'Game':
         self._multiplayer = True
@@ -885,10 +888,15 @@ class World:
     
     def get_player_actor(self) -> 'Actor':
         return self._current_scene.get_player_actor()
+    
+    def update_screen_size(self, size:vec2):
+        if self._current_scene: self._current_scene.update_screen_size(size)
 
-    def load_scene(self, scene:'Scene') -> 'World':
-        self._current_scene = scene()
-        self._current_scene.load()
+    def load_scene(self, scene:'Scene.__class__') -> 'World':
+        sc:Scene = scene()
+        self._current_scene = sc
+        sc.load()
+        Globals.game.update_size()
         return self
 
     def unload_scene(self, scene:'Scene') -> 'World':
@@ -908,10 +916,9 @@ class World:
         self._physics_world = None
         return self
 
-    def register_particle_system(self, obj:'ParticleSystem') -> 'World':
-        assert issubclass(type(obj), ParticleSystem)
-        self._particle_systems.append(obj)
-        # obj.world = self
+    def register_particle_system(self, system:'ParticleSystem') -> 'World':
+        assert issubclass(type(system), ParticleSystem)
+        self._particle_systems.append(system)
         return self
     
     def tick(self, delta_time:float):
@@ -936,7 +943,7 @@ class Scene:
         self._objects : List[SceneComponent] = []
         self._actors : list[Actor] = []
         self.manual_rendering : bool = False
-        self.active_camera : Camera = OrthographicCamera() # type: ignore
+        self._active_camera : Camera = OrthographicCamera() # type: ignore
         self._drawables : list[DrawableComponent] = []
         self._tilemaps : list[Tilemap] = []
         self._tilesets : list[Tileset] = []
@@ -952,6 +959,9 @@ class Scene:
 
     def unload(self) -> 'Scene':
         return self
+    
+    def get_active_camera(self) -> 'Camera':
+        return self._active_camera
     
     def add_drawable_rec(self, obj : 'SceneComponent'):
         if issubclass(type(obj), DrawableComponent):
@@ -976,6 +986,7 @@ class Scene:
         return self
     
     def update_screen_size(self, size:vec2):
+        if self._active_camera: self._active_camera.update_screen_size(size)
         for light in self._lights:
                 light.render()
     
@@ -1238,6 +1249,14 @@ class EventWindowResize(Event):
     def get_size(self) -> vec:
         return self._size
 
+class EventZoomLevelChanged(Event):
+    def __init__(self, size:vec2):
+        Event.__init__(self)
+        self._size:vec = size
+    
+    def get_size(self) -> vec:
+        return self._size
+
 class EventKeyPressed(Event):
     def __init__(self, key:int=Key.unknown):
         Event.__init__(self)
@@ -1411,6 +1430,7 @@ class Camera(SceneComponent):
     def world_size2_to_screen(self, dim : vec2) -> vec2:
         return vec2()
 
+
 class OrthographicCamera(Camera):
     def __init__(self) -> None:
         Camera.__init__(self)
@@ -1433,10 +1453,10 @@ class OrthographicCamera(Camera):
         x = ((p.x)/self.bounds.x + self.offset.x)*self.screen_size.x
         y = ((p.y-world.z)/self.bounds.y + self.offset.y)*self.screen_size.y
         return vec2(int(x), int(y))
-    
-    def set_zoom(self, zoom : float) -> None:
-        self.bounds*=1/abs(self.zoom-zoom)
-        self.zoom = clamp(zoom, 0, 3)
+        
+    def set_bounds_height(self, height:float):
+        self.bounds = vec2(height/self.aspect_ratio, height)
+        Globals.game.fire_event(EventZoomLevelChanged(vec2(self.bounds)))
     
     def world_size2_to_screen(self, dim : vec2) -> vec2:
         x = dim.x*self.screen_size.x/self.bounds.x
@@ -1701,7 +1721,7 @@ class DebugDot(DebugDraw):
     
     def draw(self, screen):
         DebugDraw.draw(self, screen)
-        pygame.draw.circle(screen, self.color, self.pos, self.thickness*10)
+        pygame.draw.circle(screen, self.color, self.pos, self.thickness*2)
 
 class DebugBox(DebugDraw):
     def __init__(self, game) -> None:
