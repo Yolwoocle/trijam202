@@ -203,37 +203,65 @@ class BoundingBox:
         # log(f"{other._begin} | {other._end}")
         t_a = self._owner.get_world_position()
         t_b = other._owner.get_world_position()
-        px = 0
-        py = 0
-        pz = 0
-        if t_a.x < t_b.x:
-            px = (other._begin.x+t_b.x) - (self._end.x+t_a.x)
-            if px>0: return False, vec3()
-        else:
-            px = (other._end.x+t_b.x) - (self._begin.x+t_a.x)
-            if px<0: return False, vec3()
 
-        if t_a.y < t_b.y:
-            py = (other._begin.y+t_b.y) - (self._end.y+t_a.y)
-            if py>0: return False, vec3()
-        else:
-            py = (other._end.y+t_b.y) - (self._begin.y+t_a.y)
-            if py<0: return False, vec3()
 
-        if t_a.z < t_b.z:
-            pz = (other._begin.z+t_b.z) - (self._end.z+t_a.z)
-            if pz>0: return False, vec3()
-        else:
-            pz = (other._end.z+t_b.z) - (self._begin.z+t_a.z)
-            if pz<0: return False, vec3()
-        
-        delta = t_b-t_a
-        if abs(delta.x)>abs(delta.y) and abs(delta.x)>abs(delta.z):
-            return True, vec3(px, 0, 0)
-        elif abs(delta.y)>abs(delta.x) and abs(delta.y)>abs(delta.z):
-            return True, vec3(0, py, 0)
-        else:
-            return True, vec3(0, 0, pz)
+class Collider:
+    def __init__(self, owner:'PhysicsComponent') -> None:
+        self._owner:PhysicsComponent = owner
+        pass
+
+class CircleCollider(Collider):
+    def __init__(self, owner:'PhysicsComponent', radius:float) -> None:
+        Collider.__init__(self, owner)
+        self._radius = radius
+
+class BoxCollider(Collider):
+    def __init__(self, owner: 'PhysicsComponent', size:vec3()) -> None:
+        Collider.__init__(self, owner)
+        self._size:vec3 = size
+
+def collide_circle_circle(circle1:CircleCollider, circle2:CircleCollider) -> tuple[bool, vec3]:
+    t_a = circle1._owner.get_world_position()
+    t_b = circle2._owner.get_world_position()
+    l = (t_b-t_a).length()
+    if l>0:
+        return l<(circle1._radius+circle2._radius), -(t_b-t_a).normalize()*(circle1._radius+circle2._radius-l)
+    return True, vec3(0, 1, 0)
+
+def collide_box_box(box1:BoxCollider, box2:BoxCollider) -> tuple[bool, vec3]:
+    t_a = box1._owner.get_world_position()
+    t_b = box2._owner.get_world_position()
+    px = 0
+    py = 0
+    pz = 0
+    if t_a.x < t_b.x:
+        px = (-box2._size.x/2+t_b.x) - (box1._size.x/2+t_a.x)
+        if px>0: return False, vec3()
+    else:
+        px = (box2._size.x/2+t_b.x) - (-box1._size.x+t_a.x)
+        if px<0: return False, vec3()
+
+    if t_a.y < t_b.y:
+        py = (-box2._size.y/2+t_b.y) - (box1._size.y/2+t_a.y)
+        if py>0: return False, vec3()
+    else:
+        py = (box2._size.y/2+t_b.y) - (-box2._size.y/2+t_a.y)
+        if py<0: return False, vec3()
+
+    if t_a.z < t_b.z:
+        pz = (-box2._size.z/2+t_b.z) - (box1._size.z+t_a.z)
+        if pz>0: return False, vec3()
+    else:
+        pz = (box2._size.z/2+t_b.z) - (-box1._size.z/2+t_a.z)
+        if pz<0: return False, vec3()
+    
+    delta = t_b-t_a
+    if abs(delta.x)>abs(delta.y) and abs(delta.x)>abs(delta.z):
+        return True, vec3(px, 0, 0)
+    elif abs(delta.y)>abs(delta.x) and abs(delta.y)>abs(delta.z):
+        return True, vec3(0, py, 0)
+    else:
+        return True, vec3(0, 0, pz)
 
 
 class Timeline:
@@ -1840,21 +1868,31 @@ class PhysicsWorld:
             if a.length_squared()<math.inf and b.length_squared()<math.inf:
                 if Settings.debug_level&debugLevel.physics: Globals.game.draw_debug_box(a, b, vec3(255, 0, 0), thickness=2)
 
-        # Collisions
-        for objA in self._objects:
-            for objB in self._objects:
-                if objA==objB: continue
-                col, dir = objA.get_bounding_box().intersect(objB.get_bounding_box())
-                if not col: continue
-                # objA.apply_force(Force(100*dir.normalize()*dir.length()**7))
-                M = objA.mass+objB.mass
-                tmp = vec3(objA._vel.x, objA._vel.y, objA._vel.z)
-                objA._vel = (objA.mass-objB.mass)/M*objA._vel + 2*objB.mass/M*objB._vel
-                objB._vel = 2*objA.mass/M*tmp + (objB.mass-objA.mass)/M*objB._vel
-
         for obj in self._objects:
            obj.tick(dt)
         
+        # Collisions --> TODO: Don't use bounding boxes but colliders instead
+        n=len(self._objects)
+        for i in range(n):
+            for j in range(i+1, n):
+                objA = self._objects[i]
+                objB = self._objects[j]
+                if objA==objB or (not objA._collide) or (not objB._collide): continue
+                col, dir = objA.get_bounding_box().intersect(objB.get_bounding_box())
+                if not col: continue
+                # objA.apply_force(Force(100*dir.normalize()*dir.length()**7))
+                if objA._simulate_physics:
+                    if objB._simulate_physics:
+                        M = objA._mass+objB._mass
+                        objA._pos+=(objB._mass)/M*dir
+                        objB._pos-=(objA._mass)/M*dir
+                    else:
+                        objA._pos+=dir
+                else:
+                    if objB._simulate_physics:
+                        objB._pos-=dir
+
+
     def line_trace(self, origin:vec3, direction:vec3):
         return vec3(origin.x, origin.y, 0)
 
@@ -1944,7 +1982,9 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
         self._vel = vec3()
         self._last_vel = vec3()
         self._acc = vec3()
+
         self._simulate_physics = True
+        self._collide = True
 
         self._bounding_box = BoundingBox(self, -self._size/2, self._size/2)
 
@@ -1969,6 +2009,14 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
     
     def set_mass(self, mass:float) -> 'PhysicsComponent':
         self._mass = mass
+        return self
+    
+    def set_simulate_physics(self, simulate:bool) -> 'PhysicsComponent':
+        self._simulate_physics = simulate
+        return self
+    
+    def set_collide(self, collide:bool) -> 'PhysicsComponent':
+        self._collide = collide
         return self
     
     def get_bounding_box(self) -> BoundingBox:
