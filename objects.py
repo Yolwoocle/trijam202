@@ -7,13 +7,13 @@ class Placeable(Actor):
     def __init__(self, pos: vec3 | None = None):
         Actor.__init__(self, pos)
 
-
 class CementMixer(Placeable):
     def __init__(self, pos: vec3 | None = None):
         Placeable.__init__(self, pos)
         self._root:PhysicsComponent = PhysicsComponent(None, pos)
+        self._root.set_size(vec3(p_to_w(16), p_to_w(19), p_to_w(16)))
         self._sprite = AnimatedSprite(self._root, vec3(), image_names=["cement_mixer"], sprite_time=0.5)
-        self._sprite.set_size(vec3(p_to_w(16), p_to_w(19), p_to_w(16)))
+        self._sprite.set_size(self._root.get_size())
         self._tooltip = Tooltip(self._root, vec3(0, 0, 0))
         self._t = 0.
         self._tooltip.render()
@@ -21,7 +21,7 @@ class CementMixer(Placeable):
     def tick(self, dt:float):
         self._t += dt
         self._tooltip.set_local_position(vec3(0, 0, p_to_w(19)+p_to_w(1)*math.sin(5*self._t)))
-        Globals.game.camera.set_bounds_height(Math.snap_to_grid(15+5*math.cos(self._t), 0.01))
+
         if Math.distance_max_vec3(Globals.game.get_world().get_player_actor().root.get_world_position(), self._root.get_world_position())<3:
             self._tooltip.show()
         else:
@@ -53,9 +53,7 @@ class Tooltip(DrawableComponent):
         self._txt_surface.set_sprite(Image("tooltip", dim, "", surf))
     
     def on_resize(self, event:EventWindowResize):
-        # size = event.get_size()
         dim = vec2(Globals.game.camera.world_size2_to_screen(self._bg.get_size().xy))
-        # size = Globals.game.get_size()
         self._font = Globals.game.load_font("game_font", size=dim.y/10)
         self.render()
     

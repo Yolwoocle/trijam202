@@ -149,6 +149,17 @@ class logTypes:
     error = colorit.Colors.red
     trace = colorit.Colors.white
 
+class debugLevel:
+    """
+    Log levels
+    """
+    none    = 0
+    physics = 1<<0
+    drawing = 1<<1
+    
+    all = ~0
+
+
 def log(msg, type:Tuple[int, int, int]=logTypes.info) -> None:
     """
     Log the data
@@ -182,18 +193,48 @@ class MutableBool:
         self._val=val
 
 class BoundingBox:
-    def __init__(self, begin:None|vec3=None, end:None|vec3=None) -> None:
+    def __init__(self, owner:'PhysicsComponent', begin:None|vec3=None, end:None|vec3=None) -> None:
+        self._owner:PhysicsComponent = owner
         self._begin = begin if begin else vec3()
         self._end = end if end else vec3()
     
-    def intersect(self, other:'BoundingBox') -> bool:
-        if self._begin.x > other._end.x or self._end.x < other._begin.x:
-            return False
-        if self._begin.y > other._end.y or self._end.y < other._begin.y:
-            return False
-        if self._begin.z > other._end.z or self._end.z < other._begin.z:
-            return False
-        return True
+    def intersect(self, other:'BoundingBox') -> tuple[bool, vec3]:
+        # log(f"{self._begin} | {self._end}")
+        # log(f"{other._begin} | {other._end}")
+        t_a = self._owner.get_world_position()
+        t_b = other._owner.get_world_position()
+        px = 0
+        py = 0
+        pz = 0
+        if t_a.x < t_b.x:
+            px = (other._begin.x+t_b.x) - (self._end.x+t_a.x)
+            if px>0: return False, vec3()
+        else:
+            px = (other._end.x+t_b.x) - (self._begin.x+t_a.x)
+            if px<0: return False, vec3()
+
+        if t_a.y < t_b.y:
+            py = (other._begin.y+t_b.y) - (self._end.y+t_a.y)
+            if py>0: return False, vec3()
+        else:
+            py = (other._end.y+t_b.y) - (self._begin.y+t_a.y)
+            if py<0: return False, vec3()
+
+        if t_a.z < t_b.z:
+            pz = (other._begin.z+t_b.z) - (self._end.z+t_a.z)
+            if pz>0: return False, vec3()
+        else:
+            pz = (other._end.z+t_b.z) - (self._begin.z+t_a.z)
+            if pz<0: return False, vec3()
+        
+        delta = t_b-t_a
+        if abs(delta.x)>abs(delta.y) and abs(delta.x)>abs(delta.z):
+            return True, vec3(px, 0, 0)
+        elif abs(delta.y)>abs(delta.x) and abs(delta.y)>abs(delta.z):
+            return True, vec3(0, py, 0)
+        else:
+            return True, vec3(0, 0, pz)
+
 
 class Timeline:
     def __init__(self) -> None:
@@ -531,6 +572,7 @@ class Object:
 class Settings:
     optimize_particles_alpha = False
     max_swaps_per_frame = 10
+    debug_level = debugLevel.physics
 
 class Globals:
     game : 'Game' = None                # type: ignore
@@ -973,6 +1015,8 @@ class Scene:
     
     def register_actor(self, actor:'Actor') -> 'Scene':
         self._actors.append(actor)
+        if actor.root:
+            self.register_component(actor.root)
         return self
     
     def register_component(self, component : 'SceneComponent'):
@@ -1768,35 +1812,49 @@ class DebugSpring(DebugDraw):
 
 class PhysicsWorld:
     def __init__(self):
-        self.objects:List[PhysicsComponent] = []
-        self.limits = [vec3(-math.inf, -math.inf, -math.inf), vec3(math.inf, math.inf, math.inf)]
+        self._objects:List[PhysicsComponent] = []
+        self._limits = [vec3(-math.inf, -math.inf, -math.inf), vec3(math.inf, math.inf, math.inf)]
         self._draw_borders = True
-        self.last_tick = time.time_ns()
-        self.tmp_tick = time.time_ns()
+        self._last_tick = time.time_ns()
+        self._tmp_tick = time.time_ns()
     
     def set_limits(self, min, max):
         assert type(min)==vec3 and type(max)==vec3
-        self.limits = [min, max]
+        self._limits = [min, max]
         return self
     
     def register_physics_component(self, obj:'PhysicsComponent'):
         assert issubclass(type(obj), PhysicsComponent)
-        self.objects.append(obj)
-        obj.world = self
+        self._objects.append(obj)
+
+        obj.set_physics_world(self)
 
     def tick(self, dt:float):
-        self.tmp_tick=time.time_ns()
+        self._tmp_tick=time.time_ns()
         # dt = (self.tmp_tick-self.last_tick)*1.0E-9
-        self.last_tick=self.tmp_tick
+        self._last_tick=self._tmp_tick
+
         if self._draw_borders:
-            a = set_z(self.limits[0], 0)
-            b = set_z(self.limits[1], 0)
+            a = set_z(self._limits[0], 0)
+            b = set_z(self._limits[1], 0)
             if a.length_squared()<math.inf and b.length_squared()<math.inf:
-                Globals.game.draw_debug_box(a, b, vec3(255, 0, 0), thickness=2)
+                if Settings.debug_level&debugLevel.physics: Globals.game.draw_debug_box(a, b, vec3(255, 0, 0), thickness=2)
+
+        # Collisions
+        for objA in self._objects:
+            for objB in self._objects:
+                if objA==objB: continue
+                col, dir = objA.get_bounding_box().intersect(objB.get_bounding_box())
+                if not col: continue
+                # objA.apply_force(Force(100*dir.normalize()*dir.length()**7))
+                M = objA.mass+objB.mass
+                tmp = vec3(objA._vel.x, objA._vel.y, objA._vel.z)
+                objA._vel = (objA.mass-objB.mass)/M*objA._vel + 2*objB.mass/M*objB._vel
+                objB._vel = 2*objA.mass/M*tmp + (objB.mass-objA.mass)/M*objB._vel
+
+        for obj in self._objects:
+           obj.tick(dt)
         
-        for obj in self.objects:
-            obj.tick(dt)
-            
     def line_trace(self, origin:vec3, direction:vec3):
         return vec3(origin.x, origin.y, 0)
 
@@ -1847,14 +1905,15 @@ class FrictionForce(Force):
         self.friction = value
     
     def get(self, object:Union['PhysicsComponent',None]=None):
-        if object and object.vel.length_squared()>0:
-            return -self.friction * object.vel.normalize()*(object.vel.length()**1.2) if object.get_world_position().z<1 else vec3()
+        if object and object._vel.length_squared()>0:
+            return -self.friction * object._vel.normalize()*(object._vel.length()**1.2) if object.get_world_position().z<1 else vec3()
         return vec3()
 
 class GravityForce(Force):
     def __init__(self, strength:float=-2, axis=None):
         Force.__init__(self, (axis if axis else vec3(0, 0, 1))*strength)
 
+"""
 class CollisionPoint:
     def __init__(self, a:None|vec3, b:None|vec3) -> None:
         self._a:vec3 = a if a else vec3()
@@ -1875,17 +1934,19 @@ class Solver:
 
     def solve(self, collisions:list[Collision], dt:float):
         pass
+"""
 
 class PhysicsComponent(DrawableComponent, SceneComponent):
     def __init__(self, parent, pos=None, mass:float=1, world:None|World=None):
         DrawableComponent.__init__(self, parent, pos)
         self._physics_world : PhysicsWorld = world.get_physics_world() if world else Globals.game.get_world().get_physics_world()
-        self.mass = mass
-        self.vel = vec3()
-        self.acc = vec3()
-        self.simulate_physics = True
+        self._mass = mass
+        self._vel = vec3()
+        self._last_vel = vec3()
+        self._acc = vec3()
+        self._simulate_physics = True
 
-        self._bounding_box = BoundingBox(-self._size/2, self._size/2)
+        self._bounding_box = BoundingBox(self, -self._size/2, self._size/2)
 
         self._forces:list[Force] = []
         self._forces_count:int   = 0
@@ -1895,15 +1956,30 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
     @SceneComponent.size.setter
     def size(self, s):
         self._size = s
-        self._bounding_box = BoundingBox(self._pos-self.size/2, self._pos+self.size/2)
+        self._bounding_box = BoundingBox(self, self._pos-self._size/2, self._pos+self._size/2)
     
     def set_size(self, size:vec3):
         DrawableComponent.set_size(self, size)
-        self._bounding_box = BoundingBox(self._pos-self.size/2, self._pos+self.size/2)
+        self._bounding_box = BoundingBox(self, self._pos-self._size/2, self._pos+self._size/2)
         return self
+    
+    @property
+    def mass(self) -> float:
+        return self._mass
+    
+    def set_mass(self, mass:float) -> 'PhysicsComponent':
+        self._mass = mass
+        return self
+    
+    def get_bounding_box(self) -> BoundingBox:
+        return self._bounding_box
+    
+    def set_physics_world(self, pworld:PhysicsWorld):
+        self._physics_world = pworld
 
     def draw(self):
-        Globals.game.draw_debug_box((set_z(self.get_world_position()+self._bounding_box._begin, 0)),
+        if Settings.debug_level&debugLevel.physics:
+            Globals.game.draw_debug_box((set_z(self.get_world_position()+self._bounding_box._begin, 0)),
                                         (set_z(self.get_world_position()+self._bounding_box._end, 0)), color=vec3(255, 150, 0), thickness=1)
         pass
 
@@ -1917,65 +1993,65 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
         return self
     
     def tick(self, dt:float):
-        if not self.simulate_physics: return
-        
-        self.acc = vec3()
+        if not self._simulate_physics: return
+
+        self._acc = vec3()
         for i in range(self._forces_count):
-            f = self._forces[i]
-            force = f.get(self)
-            self.acc += force
-            Globals.game.draw_debug_vector(self.get_world_position(), self.get_world_position()+0.1*force)
+            f = self._forces[i].get(self)
+            self._acc += f
+            if Settings.debug_level&debugLevel.physics: Globals.game.draw_debug_vector(self.get_world_position(), self.get_world_position()+0.1*f)
 
         self._forces_count = 0
-        self.acc /= self.mass
+        self._acc /= self._mass
         # log("Accélération : {}".format(self.acc))
-        self.vel += self.acc * dt
+        self._last_vel = self._vel
+        self._vel += self._acc * dt
 
-        vel = self.vel * dt
+        vel = self._vel * dt
 
         if vel.x<0:
-            if self._pos.x+vel.x>self._physics_world.limits[0].x:
+            if self._pos.x+vel.x>self._physics_world._limits[0].x:
                 self._pos.x += vel.x
             else:
-                self.vel.x = 0
-                self._pos.x = self._physics_world.limits[0].x
+                self._vel.x = 0
+                self._pos.x = self._physics_world._limits[0].x
         
         if vel.x>0:
-            if self._pos.x+vel.x<self._physics_world.limits[1].x:
+            if self._pos.x+vel.x<self._physics_world._limits[1].x:
                 self._pos.x += vel.x
             else: 
-                self.vel.x = 0
-                self._pos.x = self._physics_world.limits[1].x
+                self._vel.x = 0
+                self._pos.x = self._physics_world._limits[1].x
         
         if vel.y<0:
-            if self._pos.y+vel.y>self._physics_world.limits[0].y:
+            if self._pos.y+vel.y>self._physics_world._limits[0].y:
                 self._pos.y += vel.y
             else:
-                self.vel.y = 0
-                self._pos.y = self._physics_world.limits[0].y
+                self._vel.y = 0
+                self._pos.y = self._physics_world._limits[0].y
         
         if vel.y>0:
-            if self._pos.y+vel.y<self._physics_world.limits[1].y:
+            if self._pos.y+vel.y<self._physics_world._limits[1].y:
                 self._pos.y += vel.y
             else:
-                self.vel.y = 0
-                self._pos.y = self._physics_world.limits[1].y
+                self._vel.y = 0
+                self._pos.y = self._physics_world._limits[1].y
 
         if vel.z<0:
-            if self._pos.z+vel.z>self._physics_world.limits[0].z:
+            if self._pos.z+vel.z>self._physics_world._limits[0].z:
                 self._pos.z += vel.z
             else:
-                self.vel.z = 0
-                self._pos.z = self._physics_world.limits[0].z
+                self._vel.z = 0
+                self._pos.z = self._physics_world._limits[0].z
         
         if vel.z>0:
-            if self._pos.z+vel.z<self._physics_world.limits[1].z:
+            if self._pos.z+vel.z<self._physics_world._limits[1].z:
                 self._pos.z += vel.z
             else:
-                self.vel.z = 0
-                self._pos.z = self._physics_world.limits[1].z
+                self._vel.z = 0
+                self._pos.z = self._physics_world._limits[1].z
         
-        Globals.game.draw_debug_vector(self._pos, self._pos+0.1*self.vel, (10,255,10))
+        if Settings.debug_level&debugLevel.physics: Globals.game.draw_debug_vector(self._pos, self._pos+0.1*self._vel, (10,255,10))
         # Globals.game.draw_debug_box(self._pos-set_z(self.size/2, 0), self._pos+set_z(self.size/2, 0), (0, 0, 255), thickness=1)
 
 class SpriteComponent(DrawableComponent):
@@ -1994,9 +2070,10 @@ class SpriteComponent(DrawableComponent):
         if self._sprite and self.is_visible():
             draw_pos = Globals.game.camera.world_to_screen(self.get_world_position())
             self._draw_size = Globals.game.camera.world_size2_to_screen(self.size.xy) if not self._skip_resize else self._sprite.get_size()
-            Globals.game.draw_debug_dot(draw_pos+self._draw_offset)
-            t = vec2(self._draw_size.x*self._anchor.x, self._draw_size.y*self._anchor.y)
-            Globals.game.draw_debug_rectangle(draw_pos - t + self._draw_offset, draw_pos - t + self._draw_size + self._draw_offset, (255, 0, 0))
+            if Settings.debug_level&debugLevel.drawing:
+                Globals.game.draw_debug_dot(draw_pos+self._draw_offset)
+                t = vec2(self._draw_size.x*self._anchor.x, self._draw_size.y*self._anchor.y)
+                Globals.game.draw_debug_rectangle(draw_pos - t + self._draw_offset, draw_pos - t + self._draw_size + self._draw_offset, (255, 0, 0))
             if not self._skip_resize and self._sprite.size != self._draw_size:
                 if (not self._size_locked):
                     # log("Size if wrong, reloading sprite", logTypes.warning)

@@ -5,12 +5,12 @@ from globals import *
 class Player(Pawn):
     def __init__(self, pos: vec3 | None = None):
         Pawn.__init__(self, pos, "player")
+        self._root.set_mass(0.01)
         self._root.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
         self._character.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
         self._shadow = SpriteComponent(self.root, image_name="default_shadow")
         self._shadow.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
         self._shadow.set_z_bias(-1)
-        self._root.mass=0.01
         self._game = Globals.game
         self._game.register_event_listener(EventListenerFunctionCallback(EventKeyPressed, self.on_key_pressed))
         self._game.get_world().get_current_scene().register_player_actor(self)

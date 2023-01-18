@@ -22,7 +22,6 @@ class TestScene(Scene):
         self.register_actor(player)
         self.register_actor(cement_mixer)
 
-        self.register_component(player.root)
-        self.register_component(cement_mixer.root)
+        player.root.set_world_position(vec3(2, 0, 0))
         
-        self.get_active_camera().attach(player.root)
+        # self.get_active_camera().attach(player.root)
