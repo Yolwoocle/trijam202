@@ -17,8 +17,9 @@ class Player(Pawn):
     
     def tick(self, dt:float):
         Pawn.tick(self, dt)
-        trace_height = 0.0
-        self._shadow.set_world_position(vec3(self.root.get_world_position().x, self.root.get_world_position().y, trace_height-0.1))
+        trace = self._game.get_world().get_physics_world().line_trace(Ray(self._root.get_world_position(), vec3(0, 0, -1)), ignore=[self._root])
+        # self._shadow.set_world_position(vec3(self.root.get_world_position().x, self.root.get_world_position().y, trace_height-0.1))
+        self._shadow.set_world_position(trace-vec3(0, 0, 0.1))
         self._root.apply_force(GravityForce(-1.3))
         self._root.apply_force(FrictionForce(0.05))
         
@@ -27,7 +28,9 @@ class Player(Pawn):
         if self._game.is_key_down(pygame.K_RIGHT): direction+=vec2( 1,  0)
         if self._game.is_key_down(pygame.K_UP):    direction+=vec2( 0, -1)
         if self._game.is_key_down(pygame.K_DOWN):  direction+=vec2( 0,  1)
-        if direction.length_squared()>0 and abs(self._root.get_world_position().z)<0.01: self.add_input(direction.normalize())
+        if direction.length_squared()>0:
+            factor = 1 if abs(self._root.get_world_position().z)<0.01 else 0.1
+            self.add_input(direction.normalize()*factor)
 
     def jump(self):
         self._root.apply_force(Force(vec3(0, 0, 20)))

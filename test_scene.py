@@ -11,7 +11,7 @@ class TestScene(Scene):
     def load(self):
         self._world = Globals.game.get_world()
         self._world.enable_physics()
-        self._world.get_physics_world().set_limits(vec3(-6, -6, 0), vec3(6, 6, math.inf))
+        self._world.get_physics_world().set_limits(vec3(-6, -4, 0), vec3(6, 4, 100))
 
         self._active_camera = OrthographicCamera()
         self.register_component(self._active_camera)

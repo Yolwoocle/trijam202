@@ -153,9 +153,10 @@ class debugLevel:
     """
     Log levels
     """
-    none    = 0
-    physics = 1<<0
-    drawing = 1<<1
+    none        = 0
+    physics     = 1<<0
+    drawing     = 1<<1
+    collisions  = 1<<2
     
     all = ~0
 
@@ -203,6 +204,47 @@ class BoundingBox:
         # log(f"{other._begin} | {other._end}")
         t_a = self._owner.get_world_position()
         t_b = other._owner.get_world_position()
+        if self._begin.x+t_a.x > other._end.x+t_b.x or self._end.x+t_a.x < other._begin.x+t_b.x:
+            return False
+        if self._begin.y+t_a.y > other._end.y+t_b.y or self._end.y+t_a.y < other._begin.y+t_b.y:
+            return False
+        if self._begin.z+t_a.z > other._end.z+t_b.z or self._end.z+t_a.z < other._begin.z+t_b.z:
+            return False
+        return True
+
+
+class Ray:
+    def __init__(self, origin:vec3, dir:vec3) -> None:
+        self._origin = origin
+        self._dir = dir
+        pass
+
+    def intersect(self, collider:'Collider') -> tuple[bool, vec3, vec3]:
+        c = collider.__class__
+        if c==BoxCollider:
+            return self.intersect_box(collider)
+        log(f"ERROR {c}", logTypes.error)
+    
+    def intersect_box(self, box:'BoxCollider') -> tuple[bool, vec3, vec3]:
+        wp = box._owner.get_world_position()
+        top = wp-vec3(0, 0, box._size.z/2)
+        intersect, pt = ray_intersect_rectangle(top, self._dir, wp-set_z(box._size, 0)/2, wp+set_z(box._size, 0)/2, vec3(0, 0, 1))
+        return intersect, pt, pt
+
+
+def ray_intersect_rectangle(origin:vec3, direction:vec3, p1:vec3, p2:vec3, normal:vec3) -> tuple[bool, vec3]:
+    if normal.dot(direction)==0: return False, vec3()
+    t = normal.dot(origin-p1)/normal.dot(direction)
+    A = origin+t*direction
+    # if ((p1.x==p2.x and abs(p1.x-A.x)<=0.1) or min(p1.x, p2.x)<=A.x<=max(p1.x,p2.x)) and \
+    #     ((p1.y==p2.y and abs(p1.y-A.y)<=0.1) or min(p1.y, p2.y)<=A.y<=max(p1.y,p2.y)) and \
+    #         ((p1.z==p2.z and abs(p1.z-A.z)<=0.1) or min(p1.z, p2.z)<=A.z<=max(p1.z, p2.z)):
+    #     return True, A
+    s1 = set_z(p2-p1, p1.z)
+    s2 = set_z(p1-p2, p2.z)
+    if 0<=(A-p1).dot(s1)<=s1.length() and 0<=(A-p2).dot(s2)<s2.length():
+        return True, A
+    return False, vec3(.5, .5, .5)
 
 
 class Collider:
@@ -210,17 +252,26 @@ class Collider:
         self._owner:PhysicsComponent = owner
         pass
 
-class CircleCollider(Collider):
+    def set_size(self, size:vec3):
+        pass
+
+class SphereCollider(Collider):
     def __init__(self, owner:'PhysicsComponent', radius:float) -> None:
         Collider.__init__(self, owner)
         self._radius = radius
+    
+    def set_size(self, size:vec3):
+        self._radius = max(size.x, size.y, size.z)
 
 class BoxCollider(Collider):
     def __init__(self, owner: 'PhysicsComponent', size:vec3()) -> None:
         Collider.__init__(self, owner)
         self._size:vec3 = size
+    
+    def set_size(self, size:vec3):
+        self._size = size
 
-def collide_circle_circle(circle1:CircleCollider, circle2:CircleCollider) -> tuple[bool, vec3]:
+def collide_sphere_sphere(circle1:SphereCollider, circle2:SphereCollider) -> tuple[bool, vec3]:
     t_a = circle1._owner.get_world_position()
     t_b = circle2._owner.get_world_position()
     l = (t_b-t_a).length()
@@ -231,6 +282,11 @@ def collide_circle_circle(circle1:CircleCollider, circle2:CircleCollider) -> tup
 def collide_box_box(box1:BoxCollider, box2:BoxCollider) -> tuple[bool, vec3]:
     t_a = box1._owner.get_world_position()
     t_b = box2._owner.get_world_position()
+
+    if Settings.debug_level&debugLevel.collisions:
+        Globals.game.draw_debug_box(t_a-set_z(box1._size/2, 0), t_a+set_z(box1._size/2, 0), color=(0, 255, 0))
+        Globals.game.draw_debug_box(t_b-set_z(box2._size/2, 0), t_b+set_z(box2._size/2, 0), color=(0, 255, 0))
+
     px = 0
     py = 0
     pz = 0
@@ -238,18 +294,18 @@ def collide_box_box(box1:BoxCollider, box2:BoxCollider) -> tuple[bool, vec3]:
         px = (-box2._size.x/2+t_b.x) - (box1._size.x/2+t_a.x)
         if px>0: return False, vec3()
     else:
-        px = (box2._size.x/2+t_b.x) - (-box1._size.x+t_a.x)
+        px = (box2._size.x/2+t_b.x) - (-box1._size.x/2+t_a.x)
         if px<0: return False, vec3()
 
     if t_a.y < t_b.y:
         py = (-box2._size.y/2+t_b.y) - (box1._size.y/2+t_a.y)
         if py>0: return False, vec3()
     else:
-        py = (box2._size.y/2+t_b.y) - (-box2._size.y/2+t_a.y)
+        py = (box2._size.y/2+t_b.y) - (-box1._size.y/2+t_a.y)
         if py<0: return False, vec3()
 
     if t_a.z < t_b.z:
-        pz = (-box2._size.z/2+t_b.z) - (box1._size.z+t_a.z)
+        pz = (-box2._size.z/2+t_b.z) - (box1._size.z/2+t_a.z)
         if pz>0: return False, vec3()
     else:
         pz = (box2._size.z/2+t_b.z) - (-box1._size.z/2+t_a.z)
@@ -263,6 +319,19 @@ def collide_box_box(box1:BoxCollider, box2:BoxCollider) -> tuple[bool, vec3]:
     else:
         return True, vec3(0, 0, pz)
 
+def collide_generic(colA : Collider, colB : Collider) -> tuple[bool, vec3]:
+    cA = colA.__class__
+    cB = colB.__class__
+    if cA==BoxCollider:
+        if cB==BoxCollider:
+            return collide_box_box(colA, colB)
+        if cB==SphereCollider:
+            return True, vec3(1, 0, 0)
+    elif cA == SphereCollider:
+        if cB==BoxCollider:
+            return True, vec3(1, 0, 0)
+        elif cB==SphereCollider:
+            return collide_sphere_sphere(colA, colB)
 
 class Timeline:
     def __init__(self) -> None:
@@ -600,7 +669,7 @@ class Object:
 class Settings:
     optimize_particles_alpha = False
     max_swaps_per_frame = 10
-    debug_level = debugLevel.physics
+    debug_level = debugLevel.collisions
 
 class Globals:
     game : 'Game' = None                # type: ignore
@@ -1859,7 +1928,7 @@ class PhysicsWorld:
 
     def tick(self, dt:float):
         self._tmp_tick=time.time_ns()
-        # dt = (self.tmp_tick-self.last_tick)*1.0E-9
+        # dt = (self._tmp_tick-self._last_tick)*1.0E-9
         self._last_tick=self._tmp_tick
 
         if self._draw_borders:
@@ -1878,23 +1947,47 @@ class PhysicsWorld:
                 objA = self._objects[i]
                 objB = self._objects[j]
                 if objA==objB or (not objA._collide) or (not objB._collide): continue
-                col, dir = objA.get_bounding_box().intersect(objB.get_bounding_box())
+                col = objA.get_bounding_box().intersect(objB.get_bounding_box())
                 if not col: continue
                 # objA.apply_force(Force(100*dir.normalize()*dir.length()**7))
+                colA = objA.get_collider()
+                colB = objB.get_collider()
+                col, direction = collide_generic(colA, colB)
+                if not col: continue
                 if objA._simulate_physics:
                     if objB._simulate_physics:
                         M = objA._mass+objB._mass
-                        objA._pos+=(objB._mass)/M*dir
-                        objB._pos-=(objA._mass)/M*dir
+                        objA._pos += (objB._mass)/M*direction
+                        objB._pos -= (objA._mass)/M*direction
+                        objA._vel += (objB._mass)/M*direction/dt
+                        objB._vel -= (objA._mass)/M*direction/dt
+                        
                     else:
-                        objA._pos+=dir
+                        objA._pos += direction
+                        objA._vel += direction/dt
                 else:
                     if objB._simulate_physics:
-                        objB._pos-=dir
+                        objB._pos -= direction
+                        objB._vel -= direction/dt
 
 
-    def line_trace(self, origin:vec3, direction:vec3):
-        return vec3(origin.x, origin.y, 0)
+    def line_trace(self, ray:Ray, ignore:list['PhysicsComponent']=[]):
+        closest = None
+        closest_dir = 0
+        # return set_z(ray._origin, min(self._limits[0].z, self._limits[1].z))
+        for obj in self._objects:
+            if obj in ignore: continue
+            intersect, p1, _ = ray.intersect(obj.get_collider())
+            if intersect and (not closest or (p1-ray._origin).length_squared()<closest_dir):
+                closest = p1
+                closest_dir = (p1-ray._origin).length_squared()
+        if not closest:
+            return set_z(ray._origin, min(self._limits[0].z, self._limits[1].z))
+            intersect, p = ray_intersect_rectangle(ray._origin, ray._dir, self._limits[0], set_z(self._limits[1], self._limits[0].z), vec3(0, 0, 1))
+            print(intersect)
+            if Settings.debug_level&debugLevel.collisions: Globals.game.draw_debug_dot(Globals.game.camera.world_to_screen(p), (255, 0, 0))
+            return p
+        return closest
 
 class Force:
     def __init__(self, value=vec3()):
@@ -1988,6 +2081,8 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
 
         self._bounding_box = BoundingBox(self, -self._size/2, self._size/2)
 
+        self._collider = BoxCollider(self, self._size)
+
         self._forces:list[Force] = []
         self._forces_count:int   = 0
 
@@ -1997,10 +2092,12 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
     def size(self, s):
         self._size = s
         self._bounding_box = BoundingBox(self, self._pos-self._size/2, self._pos+self._size/2)
+        self._collider.set_size(self._size)
     
     def set_size(self, size:vec3):
         DrawableComponent.set_size(self, size)
         self._bounding_box = BoundingBox(self, self._pos-self._size/2, self._pos+self._size/2)
+        self._collider.set_size(self._size)
         return self
     
     @property
@@ -2024,6 +2121,9 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
     
     def set_physics_world(self, pworld:PhysicsWorld):
         self._physics_world = pworld
+    
+    def get_collider(self) -> Collider:
+        return self._collider
 
     def draw(self):
         if Settings.debug_level&debugLevel.physics:
