@@ -11,7 +11,7 @@ game.load_image("cement_mixer", "assets/art/cement_mixer.png")
 game.load_image("speech_bubble", "assets/art/speech_bubble.png")
 game.load_font("game_font", "data/debug_font.ttf")
 
-Settings.debug_level = debugLevel.all ^ debugLevel.physics  # Tout sauf la physique
+Settings.debug_level = debugLevel.collisions    # Juste les collisions
 
 world = game.get_world()
 world.load_scene(MainMenu)

@@ -44,25 +44,25 @@ class Tooltip(DrawableComponent):
     def __init__(self, parent: Union['SceneComponent', None] = None, pos: vec3 | None = None):
         DrawableComponent.__init__(self, parent, pos)
         self._bg = SpriteComponent(self, vec3(), image_name="speech_bubble")
-        self._bg.set_size(vec3(p_to_w(18), p_to_w(21), p_to_w(16)))
-        self._bg._z_bias=-1
+        self._bg.set_size(vec3(p_to_w(18), p_to_w(21), p_to_w(16))).set_z_bias(-1)
         self._txt:str = "PRESS E"
-
-        dim = vec2(Globals.game.camera.world_size2_to_screen(self._bg.get_size().xy))
-        self._font = Globals.game.load_font("game_font", size=dim.y/10)
+        self._font = Globals.game.load_font("game_font", size=14)
         self._txt_surface = SpriteComponent(self._bg, vec3())
-        # self._txt_surface.set_size(vec3(SPRITE_16_SIZE, SPRITE_16_SIZE, SPRITE_16_SIZE))
-        self._txt_surface._skip_resize=True
+        self._txt_surface._skip_resize = True
+
         Globals.game.register_event_listener(EventListenerFunctionCallback(EventWindowResize, self.on_resize))
         Globals.game.register_event_listener(EventListenerFunctionCallback(EventZoomLevelChanged, self.on_resize))
+        
         self.render()
     
     def render(self):
         txt_data = self._font.data.render(self._txt, True, (10, 10, 10))
+
         dim = vec2(Globals.game.camera.world_size2_to_screen(self._bg.get_size().xy))
         surf = pygame.surface.Surface(dim).convert_alpha()
         surf.fill((255, 255, 255, 0))
         surf.blit(txt_data, dim/2-vec2(txt_data.get_size()[0], txt_data.get_size()[1])/2 - vec2(0, 0.1)*dim.y)
+        
         self._txt_surface.set_sprite(Image("tooltip", dim, "", surf))
     
     def on_resize(self, event:EventWindowResize):
