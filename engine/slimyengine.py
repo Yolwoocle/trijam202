@@ -565,6 +565,10 @@ class Image:
     def path(self, val):
         self._path = val
 
+class Animation:
+    def __init__(self, name, size, path:str="") -> None:
+        pass
+
 class Font:
     def __init__(self, name:str, path:str, data:pygame.font.Font, size:int, flags:int=0):
         self._name = name
