@@ -149,6 +149,18 @@ class logTypes:
     error = colorit.Colors.red
     trace = colorit.Colors.white
 
+class debugLevel:
+    """
+    Log levels
+    """
+    none        = 0
+    physics     = 1<<0
+    drawing     = 1<<1
+    collisions  = 1<<2
+    
+    all = ~0
+
+
 def log(msg, type:Tuple[int, int, int]=logTypes.info) -> None:
     """
     Log the data
@@ -182,18 +194,153 @@ class MutableBool:
         self._val=val
 
 class BoundingBox:
-    def __init__(self, begin:None|vec3=None, end:None|vec3=None) -> None:
+    def __init__(self, owner:'PhysicsComponent', begin:None|vec3=None, end:None|vec3=None) -> None:
+        self._owner:PhysicsComponent = owner
         self._begin = begin if begin else vec3()
         self._end = end if end else vec3()
     
-    def intersect(self, other:'BoundingBox') -> bool:
-        if self._begin.x > other._end.x or self._end.x < other._begin.x:
+    def intersect(self, other:'BoundingBox') -> tuple[bool, vec3]:
+        # log(f"{self._begin} | {self._end}")
+        # log(f"{other._begin} | {other._end}")
+        t_a = self._owner.get_world_position()
+        t_b = other._owner.get_world_position()
+        if self._begin.x+t_a.x > other._end.x+t_b.x or self._end.x+t_a.x < other._begin.x+t_b.x:
             return False
-        if self._begin.y > other._end.y or self._end.y < other._begin.y:
+        if self._begin.y+t_a.y > other._end.y+t_b.y or self._end.y+t_a.y < other._begin.y+t_b.y:
             return False
-        if self._begin.z > other._end.z or self._end.z < other._begin.z:
+        if self._begin.z+t_a.z > other._end.z+t_b.z or self._end.z+t_a.z < other._begin.z+t_b.z:
             return False
         return True
+
+
+class Ray:
+    def __init__(self, origin:vec3, dir:vec3) -> None:
+        self._origin = origin
+        self._dir = dir
+        pass
+
+    def intersect(self, collider:'Collider') -> tuple[bool, vec3, vec3]:
+        c = collider.__class__
+        if c==BoxCollider:
+            return self.intersect_box(collider)
+        log(f"ERROR {c}", logTypes.error)
+    
+    def intersect_box(self, box:'BoxCollider') -> tuple[bool, vec3, vec3]:
+        wp = box._owner.get_world_position()
+        top = wp-vec3(0, 0, box._size.z/2)
+        intersect, pt = ray_intersect_rectangle(top, self._dir, wp-set_z(box._size, 0)/2, wp+set_z(box._size, 0)/2, vec3(0, 0, 1))
+        return intersect, pt, pt
+
+
+def ray_intersect_rectangle(origin:vec3, direction:vec3, p1:vec3, p2:vec3, normal:vec3) -> tuple[bool, vec3]:
+    if normal.dot(direction)==0: return False, vec3()
+    t = normal.dot(origin-p1)/normal.dot(direction)
+    A = origin+t*direction
+    # if ((p1.x==p2.x and abs(p1.x-A.x)<=0.1) or min(p1.x, p2.x)<=A.x<=max(p1.x,p2.x)) and \
+    #     ((p1.y==p2.y and abs(p1.y-A.y)<=0.1) or min(p1.y, p2.y)<=A.y<=max(p1.y,p2.y)) and \
+    #         ((p1.z==p2.z and abs(p1.z-A.z)<=0.1) or min(p1.z, p2.z)<=A.z<=max(p1.z, p2.z)):
+    #     return True, A
+    s1 = set_z(p2-p1, p1.z)
+    s2 = set_z(p1-p2, p2.z)
+    if 0<=(A-p1).dot(s1)<=s1.length() and 0<=(A-p2).dot(s2)<s2.length():
+        return True, A
+    return False, vec3(.5, .5, .5)
+
+
+class Collider:
+    def __init__(self, owner:'PhysicsComponent') -> None:
+        self._owner:PhysicsComponent = owner
+        pass
+
+    def set_size(self, size:vec3):
+        pass
+
+class SphereCollider(Collider):
+    def __init__(self, owner:'PhysicsComponent', radius:float) -> None:
+        Collider.__init__(self, owner)
+        self._radius = radius
+    
+    def set_size(self, size:vec3):
+        self._radius = max(size.x, size.y, size.z)
+
+class BoxCollider(Collider):
+    def __init__(self, owner: 'PhysicsComponent', size:vec3()) -> None:
+        Collider.__init__(self, owner)
+        self._size:vec3 = size
+    
+    def set_size(self, size:vec3):
+        self._size = size
+
+def collide_sphere_sphere(circle1:SphereCollider, circle2:SphereCollider) -> tuple[bool, vec3]:
+    t_a = circle1._owner.get_world_position()
+    t_b = circle2._owner.get_world_position()
+    l = (t_b-t_a).length()
+    if l>0:
+        return l<(circle1._radius+circle2._radius), -(t_b-t_a).normalize()*(circle1._radius+circle2._radius-l)
+    return True, vec3(0, 1, 0)
+
+def collide_box_box(box1:BoxCollider, box2:BoxCollider) -> tuple[bool, vec3]:
+    t_a = box1._owner.get_world_position()
+    t_b = box2._owner.get_world_position()
+
+    if Settings.debug_level&debugLevel.collisions:
+        Globals.game.draw_debug_box(t_a-set_z(box1._size/2, 0), t_a+set_z(box1._size/2, 0), color=(0, 255, 0))
+        Globals.game.draw_debug_box(t_b-set_z(box2._size/2, 0), t_b+set_z(box2._size/2, 0), color=(0, 255, 0))
+
+    px = 0
+    py = 0
+    pz = 0
+    if t_a.x < t_b.x:
+        px = (-box2._size.x/2+t_b.x) - (box1._size.x/2+t_a.x)
+        if px>0: return False, vec3()
+    else:
+        px = (box2._size.x/2+t_b.x) - (-box1._size.x/2+t_a.x)
+        if px<0: return False, vec3()
+
+    if t_a.y < t_b.y:
+        py = (-box2._size.y/2+t_b.y) - (box1._size.y/2+t_a.y)
+        if py>0: return False, vec3()
+    else:
+        py = (box2._size.y/2+t_b.y) - (-box1._size.y/2+t_a.y)
+        if py<0: return False, vec3()
+
+    if t_a.z < t_b.z:
+        pz = (-box2._size.z/2+t_b.z) - (box1._size.z/2+t_a.z)
+        if pz>0: return False, vec3()
+    else:
+        pz = (box2._size.z/2+t_b.z) - (-box1._size.z/2+t_a.z)
+        if pz<0: return False, vec3()
+    
+    if abs(px)<abs(py) and abs(px)<abs(pz):
+        return True, vec3(px, 0, 0)
+    elif abs(py)<abs(px) and abs(py)<abs(pz):
+        return True, vec3(0, py, 0)
+    else:
+        return True, vec3(0, 0, pz)
+    
+    """
+    delta = t_b-t_a
+    if abs(delta.x)>abs(delta.y) and abs(delta.x)>abs(delta.z):
+        return True, vec3(px, 0, 0)
+    elif abs(delta.y)>abs(delta.x) and abs(delta.y)>abs(delta.z):
+        return True, vec3(0, py, 0)
+    else:
+        return True, vec3(0, 0, pz)
+    """
+
+def collide_generic(colA : Collider, colB : Collider) -> tuple[bool, vec3]:
+    cA = colA.__class__
+    cB = colB.__class__
+    if cA==BoxCollider:
+        if cB==BoxCollider:
+            return collide_box_box(colA, colB)
+        if cB==SphereCollider:
+            return True, vec3(1, 0, 0)
+    elif cA == SphereCollider:
+        if cB==BoxCollider:
+            return True, vec3(1, 0, 0)
+        elif cB==SphereCollider:
+            return collide_sphere_sphere(colA, colB)
 
 class Timeline:
     def __init__(self) -> None:
@@ -268,6 +415,33 @@ class Key:
     space = pygame.K_SPACE
     leftCtrl = pygame.K_LCTRL
     rightCtrl = pygame.K_RCTRL
+
+    a = pygame.K_a
+    b = pygame.K_b
+    c = pygame.K_c
+    d = pygame.K_d
+    e = pygame.K_e
+    f = pygame.K_f
+    g = pygame.K_g
+    h = pygame.K_h
+    i = pygame.K_i
+    j = pygame.K_j
+    k = pygame.K_k
+    l = pygame.K_l
+    m = pygame.K_m
+    n = pygame.K_n
+    o = pygame.K_o
+    p = pygame.K_p
+    q = pygame.K_q
+    r = pygame.K_r
+    s = pygame.K_s
+    t = pygame.K_t
+    u = pygame.K_u
+    v = pygame.K_v
+    w = pygame.K_w
+    x = pygame.K_x
+    y = pygame.K_y
+    z = pygame.K_z
 
 class Math:
     @staticmethod
@@ -522,6 +696,12 @@ def import_tiled_tilemap(name:str, path:str, tileset:Tileset) -> Tilemap:
     return tm
 """
 
+# Helpers
+def register_event_listener(event_listener:'EventListener') -> 'Game':
+    return Globals.game.register_event_listener(event_listener)
+
+def after_time(function:callable, time:float) -> 'Game':
+    Globals.game.register_periodic_function(function, time, 1)
 
 # Main classes
 class Object:
@@ -531,13 +711,14 @@ class Object:
 class Settings:
     optimize_particles_alpha = False
     max_swaps_per_frame = 10
+    debug_level = debugLevel.collisions
 
 class Globals:
     game : 'Game' = None                # type: ignore
     settings : 'Settings' = Settings()  # type: ignore
 
 class Game:
-    def __init__(self, size:vec2=vec2(640, 480)):
+    def __init__(self, size:vec2=vec2(1280, 720)):
         if Globals.game: raise RuntimeError("There can exist only one game")
         Globals.game = self
         self._world = World()
@@ -571,7 +752,7 @@ class Game:
     def init(self, title="Slimy Engine"):
         pygame.init()
         flags = pygame.RESIZABLE | pygame.DOUBLEBUF
-        self.screen = pygame.display.set_mode(self._size, flags)
+        self._screen = pygame.display.set_mode(self._size, flags)
         self._title = title
         pygame.display.set_caption(self._title)
         self._clock = pygame.time.Clock()
@@ -585,6 +766,8 @@ class Game:
 
         self._gui_manager:pygame_gui.UIManager = pygame_gui.UIManager(self._size)
         self._gui_refs:dict[pygame_gui.core.UIElement, Widget]={}
+
+        self.set_size(self._size)
 
         return self
     
@@ -619,8 +802,8 @@ class Game:
                 listener.trigger(event)
         return self
     
-    def register_periodic_function(self, function:callable, interval:float) -> bool:
-        self._perioric_functions.append([self._ctime, interval, function])
+    def register_periodic_function(self, function:callable, interval:float, max_calls=-1) -> bool:
+        self._perioric_functions.append([self._ctime, interval, function, max_calls])
         return True
     
     def load_font(self, name, path:str|None=None, size=28, force_reload=False):
@@ -700,6 +883,9 @@ class Game:
     def get_delta_time(self) -> float:
         return self._delta_time
     
+    def get_time(self) -> float:
+        return self._ctime
+    
     def set_background_color(self, color):
         assert type(color)==tuple
         self._background_color = color
@@ -708,14 +894,18 @@ class Game:
     def get_size(self) -> vec2:
         return self._size
     
+    def set_size(self, size:vec2):
+        self._size = size
+        self.update_size()
+    
     def update_size(self) -> None:
         self.get_world().update_screen_size(self._size)
         self._gui_manager.set_window_resolution(self._size)
+        self.fire_event(EventWindowResize(self._size))
     
     def on_resize(self, event:pygame.event.Event):
-        self._size = vec2(event.dict['size'][0], event.dict['size'][1])
-        self.update_size()
-        self.fire_event(EventWindowResize(self._size))
+        size = vec2(event.dict['size'][0], event.dict['size'][1])
+        self.set_size(size)
         pass
 
     def is_key_down(self, key):
@@ -744,23 +934,25 @@ class Game:
             self._gui_manager.process_events(event)
             
         if not dont_clear:
-            self.screen.fill(self._background_color)
+            self._screen.fill(self._background_color)
     
     def tick(self):
         if not self._alive: return
         self._ctime = (time.time_ns() - self._start_time)/1E9
         for function in self._perioric_functions:
-            lt, dt, func = function
+            lt, dt, func, count = function
+            if count==0: self._perioric_functions.remove(function)
             if lt+dt<=self._ctime:
                 func()
                 function[0]=self._ctime
+                function[3]=function[3]-1
         # self._delta_time = self._clock.get_time()
         self._gui_manager.update(self._delta_time)
         self._world.tick(self._delta_time)
         self.draw()
     
     def draw(self):
-        self._gui_manager.draw_ui(self.screen)
+        self._gui_manager.draw_ui(self._screen)
         self._world.draw()
         self.debug_pass()
 
@@ -780,7 +972,7 @@ class Game:
         def debug_pass(self):
             if not self._no_debug:
                 for debug in self._frame_debugs:
-                    debug.draw(self.screen)
+                    debug.draw(self._screen)
                 self._frame_debugs = []
                 current_height = 10
                 self.debug_infos["fps"] = str(round(self._clock.get_fps()))
@@ -789,7 +981,7 @@ class Game:
                     txt = str(debug) + ": " + str(self.debug_infos[debug])
                     img = self._debug_font.data.render(txt, True, (255, 255, 255))
                     rect = img.get_rect()
-                    self.screen.blit(img, (self._size.x-rect.width-10, current_height))
+                    self._screen.blit(img, (self._size.x-rect.width-10, current_height))
                     current_height+=rect.height+5
 
         def draw_debug_vector(self, start : vec3, end : vec3, color=(255,0,0), immediate=False):
@@ -799,7 +991,7 @@ class Game:
             vector.end = end
             vector.color = color
             if immediate:
-                vector.draw(self.screen)
+                vector.draw(self._screen)
             else:
                 self._frame_debugs.append(vector)
             
@@ -810,7 +1002,7 @@ class Game:
             spring._end = end
             spring._color = color
             if immediate:
-                spring.draw(self.screen)
+                spring.draw(self._screen)
             else:
                 self._frame_debugs.append(spring)
             
@@ -833,7 +1025,7 @@ class Game:
             dot.color = color
             dot.thickness = thickness
             if immediate:
-                dot.draw(self.screen)
+                dot.draw(self._screen)
             else:
                 self._frame_debugs.append(dot)
 
@@ -846,7 +1038,7 @@ class Game:
             square.thickness = thickness
             square.offset = offset if offset else vec2()
             if immediate:
-                square.draw(self.screen)
+                square.draw(self._screen)
             else:
                 self._frame_debugs.append(square)
     
@@ -879,9 +1071,12 @@ class Game:
 
 class World:
     def __init__(self) -> None:
+        self._game = Globals.game
         self._current_scene:Scene|None = None
         self._physics_world:PhysicsWorld|None = None
         self._particle_systems:list[ParticleSystem] = []
+        # self._physics_tick_rate = 1/60.
+        # self._physics_last_update = 0.
     
     def get_current_scene(self) -> 'Scene':
         return self._current_scene
@@ -921,13 +1116,18 @@ class World:
         self._particle_systems.append(system)
         return self
     
-    def tick(self, delta_time:float):
+    def tick(self, dt:float):
+        # ctime = self._game.get_time()
+        # if (ctime-self._physics_last_update)>self._physics_tick_rate:
         if self._physics_world is not None:
-            self._physics_world.tick(delta_time)
+            self._physics_world.tick(dt)
+            # self._physics_last_update=ctime
+        # if self._current_scene is not None:
+        #     self._current_scene.physics_update(delta_time)
         if self._current_scene is not None:
-            self._current_scene.update(delta_time)
+            self._current_scene.update(dt)
         for system in self._particle_systems:
-            system.tick(delta_time)
+            system.tick(dt)
     
     def draw(self):
         for system in self._particle_systems:
@@ -973,6 +1173,8 @@ class Scene:
     
     def register_actor(self, actor:'Actor') -> 'Scene':
         self._actors.append(actor)
+        if actor.root:
+            self.register_component(actor.root)
         return self
     
     def register_component(self, component : 'SceneComponent'):
@@ -1024,7 +1226,7 @@ class Scene:
             for light in self._lights:
                 light.draw()
             
-            Globals.game.screen.blit(self._lightmap, (0, 0), special_flags=pygame.BLEND_MULT)
+            Globals.game._screen.blit(self._lightmap, (0, 0), special_flags=pygame.BLEND_MULT)
     
     def update(self, dt:float):
         # for actor in self._actors:
@@ -1033,6 +1235,10 @@ class Scene:
             obj.update()
         for actor in self._actors:
             actor.tick(dt)
+    
+    # def physics_update(self, dt:float):
+    #     for actor in self._actors:
+    #         actor.physics_tick(dt)
     
     def clear(self):
         self._backgrounds.clear()
@@ -1305,6 +1511,9 @@ class Actor(Object):
     def tick(self, dt:float):
         pass
 
+    # def physics_tick(self, dt:float):
+    #     pass
+
 class Pawn(Actor):
     def __init__(self, pos:vec3|None=None, image_name:str="default"):
         Actor.__init__(self, pos=pos)
@@ -1445,13 +1654,12 @@ class OrthographicCamera(Camera):
         self.bounds = vec2(self.bounds[1]/self.aspect_ratio, self.bounds[1])
 
     def world_to_cam(self, world : vec3) -> vec3:
-        p=self.get_world_position()
-        return world-vec3(p.x, p.y, 0)
+        return world-self.get_world_position()
 
     def world_to_screen(self, world : vec3) -> vec2:
         p = world-self.get_world_position()
         x = ((p.x)/self.bounds.x + self.offset.x)*self.screen_size.x
-        y = ((p.y-world.z)/self.bounds.y + self.offset.y)*self.screen_size.y
+        y = ((p.y-p.z)/self.bounds.y + self.offset.y)*self.screen_size.y
         return vec2(int(x), int(y))
         
     def set_bounds_height(self, height:float):
@@ -1607,7 +1815,7 @@ class ParticleEmitter(Drawable):
     
     def draw(self) -> None:
         assert self._system!=None
-        screen = Globals.game.screen
+        screen = Globals.game._screen
         camera = Globals.game.camera
         screen_size = Globals.game.get_size()
         for particle in self._particles:
@@ -1768,37 +1976,86 @@ class DebugSpring(DebugDraw):
 
 class PhysicsWorld:
     def __init__(self):
-        self.objects:List[PhysicsComponent] = []
-        self.limits = [vec3(-math.inf, -math.inf, -math.inf), vec3(math.inf, math.inf, math.inf)]
+        self._objects:List[PhysicsComponent] = []
+        self._limits = [vec3(-math.inf, -math.inf, -math.inf), vec3(math.inf, math.inf, math.inf)]
         self._draw_borders = True
-        self.last_tick = time.time_ns()
-        self.tmp_tick = time.time_ns()
+        self._last_tick = time.time_ns()
+        self._tmp_tick = time.time_ns()
     
     def set_limits(self, min, max):
         assert type(min)==vec3 and type(max)==vec3
-        self.limits = [min, max]
+        self._limits = [min, max]
         return self
     
     def register_physics_component(self, obj:'PhysicsComponent'):
         assert issubclass(type(obj), PhysicsComponent)
-        self.objects.append(obj)
-        obj.world = self
+        self._objects.append(obj)
+
+        obj.set_physics_world(self)
 
     def tick(self, dt:float):
-        self.tmp_tick=time.time_ns()
-        # dt = (self.tmp_tick-self.last_tick)*1.0E-9
-        self.last_tick=self.tmp_tick
+        # self._tmp_tick=time.time_ns()
+        # dt = (self._tmp_tick-self._last_tick)*1.0E-9
+        # self._last_tick=self._tmp_tick
+
         if self._draw_borders:
-            a = set_z(self.limits[0], 0)
-            b = set_z(self.limits[1], 0)
+            a = set_z(self._limits[0], 0)
+            b = set_z(self._limits[1], 0)
             if a.length_squared()<math.inf and b.length_squared()<math.inf:
-                Globals.game.draw_debug_box(a, b, vec3(255, 0, 0), thickness=2)
+                if Settings.debug_level&debugLevel.physics: Globals.game.draw_debug_box(a, b, vec3(255, 0, 0), thickness=2)
+
+        for obj in self._objects:
+           obj.tick(dt)
         
-        for obj in self.objects:
-            obj.tick(dt)
-            
-    def line_trace(self, origin:vec3, direction:vec3):
-        return vec3(origin.x, origin.y, 0)
+        # Collisions
+        n=len(self._objects)
+        for i in range(n):
+            for j in range(i+1, n):
+                objA = self._objects[i]
+                objB = self._objects[j]
+                if objA==objB or (not objA._collide) or (not objB._collide): continue
+                col = objA.get_bounding_box().intersect(objB.get_bounding_box())
+                if not col: continue
+                # objA.apply_force(Force(100*dir.normalize()*dir.length()**7))
+                colA = objA.get_collider()
+                colB = objB.get_collider()
+                col, direction = collide_generic(colA, colB)
+                if not col: continue
+                if objA._simulate_physics:
+                    if objB._simulate_physics:
+                        M = objA._mass+objB._mass
+                        objA._pos += (objB._mass)/M*direction
+                        objB._pos -= (objA._mass)/M*direction
+                        objA._vel += (objB._mass)/M*direction/dt
+                        objB._vel -= (objA._mass)/M*direction/dt
+                        
+                    else:
+                        objA._pos += direction
+                        objA._vel += direction/dt
+                else:
+                    if objB._simulate_physics:
+                        objB._pos -= direction
+                        objB._vel -= direction/dt
+
+
+    def line_trace(self, ray:Ray, ignore:list['PhysicsComponent']=[]):
+        closest = None
+        closest_dir = 0
+        return set_z(ray._origin, min(self._limits[0].z, self._limits[1].z))
+        
+        for obj in self._objects:
+            if obj in ignore: continue
+            intersect, p1, _ = ray.intersect(obj.get_collider())
+            if intersect and (not closest or (p1-ray._origin).length_squared()<closest_dir):
+                closest = p1
+                closest_dir = (p1-ray._origin).length_squared()
+        if not closest:
+            return set_z(ray._origin, min(self._limits[0].z, self._limits[1].z))
+            intersect, p = ray_intersect_rectangle(ray._origin, ray._dir, self._limits[0], set_z(self._limits[1], self._limits[0].z), vec3(0, 0, 1))
+            print(intersect)
+            if Settings.debug_level&debugLevel.collisions: Globals.game.draw_debug_dot(Globals.game.camera.world_to_screen(p), (255, 0, 0))
+            return p
+        return closest
 
 class Force:
     def __init__(self, value=vec3()):
@@ -1847,14 +2104,15 @@ class FrictionForce(Force):
         self.friction = value
     
     def get(self, object:Union['PhysicsComponent',None]=None):
-        if object and object.vel.length_squared()>0:
-            return -self.friction * object.vel.normalize()*(object.vel.length()**1.2) if object.get_world_position().z<1 else vec3()
+        if object and object._vel.length_squared()>0:
+            return -self.friction * object._vel.normalize()*(object._vel.length()**1.2) if object.get_world_position().z<1 else vec3()
         return vec3()
 
 class GravityForce(Force):
     def __init__(self, strength:float=-2, axis=None):
         Force.__init__(self, (axis if axis else vec3(0, 0, 1))*strength)
 
+"""
 class CollisionPoint:
     def __init__(self, a:None|vec3, b:None|vec3) -> None:
         self._a:vec3 = a if a else vec3()
@@ -1875,17 +2133,23 @@ class Solver:
 
     def solve(self, collisions:list[Collision], dt:float):
         pass
+"""
 
 class PhysicsComponent(DrawableComponent, SceneComponent):
     def __init__(self, parent, pos=None, mass:float=1, world:None|World=None):
         DrawableComponent.__init__(self, parent, pos)
         self._physics_world : PhysicsWorld = world.get_physics_world() if world else Globals.game.get_world().get_physics_world()
-        self.mass = mass
-        self.vel = vec3()
-        self.acc = vec3()
-        self.simulate_physics = True
+        self._mass = mass
+        self._vel = vec3()
+        self._last_vel = vec3()
+        self._acc = vec3()
 
-        self._bounding_box = BoundingBox(-self._size/2, self._size/2)
+        self._simulate_physics = True
+        self._collide = True
+
+        self._bounding_box = BoundingBox(self, -self._size/2, self._size/2)
+
+        self._collider = BoxCollider(self, self._size)
 
         self._forces:list[Force] = []
         self._forces_count:int   = 0
@@ -1895,15 +2159,43 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
     @SceneComponent.size.setter
     def size(self, s):
         self._size = s
-        self._bounding_box = BoundingBox(self._pos-self.size/2, self._pos+self.size/2)
+        self._bounding_box = BoundingBox(self, self._pos-self._size/2, self._pos+self._size/2)
+        self._collider.set_size(self._size)
     
     def set_size(self, size:vec3):
         DrawableComponent.set_size(self, size)
-        self._bounding_box = BoundingBox(self._pos-self.size/2, self._pos+self.size/2)
+        self._bounding_box = BoundingBox(self, self._pos-self._size/2, self._pos+self._size/2)
+        self._collider.set_size(self._size)
         return self
+    
+    @property
+    def mass(self) -> float:
+        return self._mass
+    
+    def set_mass(self, mass:float) -> 'PhysicsComponent':
+        self._mass = mass
+        return self
+    
+    def set_simulate_physics(self, simulate:bool) -> 'PhysicsComponent':
+        self._simulate_physics = simulate
+        return self
+    
+    def set_collide(self, collide:bool) -> 'PhysicsComponent':
+        self._collide = collide
+        return self
+    
+    def get_bounding_box(self) -> BoundingBox:
+        return self._bounding_box
+    
+    def set_physics_world(self, pworld:PhysicsWorld):
+        self._physics_world = pworld
+    
+    def get_collider(self) -> Collider:
+        return self._collider
 
     def draw(self):
-        Globals.game.draw_debug_box((set_z(self.get_world_position()+self._bounding_box._begin, 0)),
+        if Settings.debug_level&debugLevel.physics:
+            Globals.game.draw_debug_box((set_z(self.get_world_position()+self._bounding_box._begin, 0)),
                                         (set_z(self.get_world_position()+self._bounding_box._end, 0)), color=vec3(255, 150, 0), thickness=1)
         pass
 
@@ -1917,65 +2209,64 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
         return self
     
     def tick(self, dt:float):
-        if not self.simulate_physics: return
-        
-        self.acc = vec3()
+        if not self._simulate_physics: return
+
+        self._acc = vec3()
         for i in range(self._forces_count):
-            f = self._forces[i]
-            force = f.get(self)
-            self.acc += force
-            Globals.game.draw_debug_vector(self.get_world_position(), self.get_world_position()+0.1*force)
+            f = self._forces[i].get(self)
+            self._acc += f
+            if Settings.debug_level&debugLevel.physics: Globals.game.draw_debug_vector(self.get_world_position(), self.get_world_position()+0.1*f)
 
         self._forces_count = 0
-        self.acc /= self.mass
         # log("Accélération : {}".format(self.acc))
-        self.vel += self.acc * dt
+        self._last_vel = self._vel
+        self._vel += self._acc / self._mass * dt
 
-        vel = self.vel * dt
+        vel = self._vel * dt
 
         if vel.x<0:
-            if self._pos.x+vel.x>self._physics_world.limits[0].x:
+            if self._pos.x+vel.x>self._physics_world._limits[0].x:
                 self._pos.x += vel.x
             else:
-                self.vel.x = 0
-                self._pos.x = self._physics_world.limits[0].x
+                self._vel.x = 0
+                self._pos.x = self._physics_world._limits[0].x
         
         if vel.x>0:
-            if self._pos.x+vel.x<self._physics_world.limits[1].x:
+            if self._pos.x+vel.x<self._physics_world._limits[1].x:
                 self._pos.x += vel.x
             else: 
-                self.vel.x = 0
-                self._pos.x = self._physics_world.limits[1].x
+                self._vel.x = 0
+                self._pos.x = self._physics_world._limits[1].x
         
         if vel.y<0:
-            if self._pos.y+vel.y>self._physics_world.limits[0].y:
+            if self._pos.y+vel.y>self._physics_world._limits[0].y:
                 self._pos.y += vel.y
             else:
-                self.vel.y = 0
-                self._pos.y = self._physics_world.limits[0].y
+                self._vel.y = 0
+                self._pos.y = self._physics_world._limits[0].y
         
         if vel.y>0:
-            if self._pos.y+vel.y<self._physics_world.limits[1].y:
+            if self._pos.y+vel.y<self._physics_world._limits[1].y:
                 self._pos.y += vel.y
             else:
-                self.vel.y = 0
-                self._pos.y = self._physics_world.limits[1].y
+                self._vel.y = 0
+                self._pos.y = self._physics_world._limits[1].y
 
         if vel.z<0:
-            if self._pos.z+vel.z>self._physics_world.limits[0].z:
+            if self._pos.z+vel.z>self._physics_world._limits[0].z:
                 self._pos.z += vel.z
             else:
-                self.vel.z = 0
-                self._pos.z = self._physics_world.limits[0].z
+                self._vel.z = 0
+                self._pos.z = self._physics_world._limits[0].z
         
         if vel.z>0:
-            if self._pos.z+vel.z<self._physics_world.limits[1].z:
+            if self._pos.z+vel.z<self._physics_world._limits[1].z:
                 self._pos.z += vel.z
             else:
-                self.vel.z = 0
-                self._pos.z = self._physics_world.limits[1].z
+                self._vel.z = 0
+                self._pos.z = self._physics_world._limits[1].z
         
-        Globals.game.draw_debug_vector(self._pos, self._pos+0.1*self.vel, (10,255,10))
+        if Settings.debug_level&debugLevel.physics: Globals.game.draw_debug_vector(self._pos, self._pos+0.1*self._vel, (10,255,10))
         # Globals.game.draw_debug_box(self._pos-set_z(self.size/2, 0), self._pos+set_z(self.size/2, 0), (0, 0, 255), thickness=1)
 
 class SpriteComponent(DrawableComponent):
@@ -1994,16 +2285,17 @@ class SpriteComponent(DrawableComponent):
         if self._sprite and self.is_visible():
             draw_pos = Globals.game.camera.world_to_screen(self.get_world_position())
             self._draw_size = Globals.game.camera.world_size2_to_screen(self.size.xy) if not self._skip_resize else self._sprite.get_size()
-            Globals.game.draw_debug_dot(draw_pos+self._draw_offset)
-            t = vec2(self._draw_size.x*self._anchor.x, self._draw_size.y*self._anchor.y)
-            Globals.game.draw_debug_rectangle(draw_pos - t + self._draw_offset, draw_pos - t + self._draw_size + self._draw_offset, (255, 0, 0))
+            if Settings.debug_level&debugLevel.drawing:
+                Globals.game.draw_debug_dot(draw_pos+self._draw_offset)
+                t = vec2(self._draw_size.x*self._anchor.x, self._draw_size.y*self._anchor.y)
+                Globals.game.draw_debug_rectangle(draw_pos - t + self._draw_offset, draw_pos - t + self._draw_size + self._draw_offset, (255, 0, 0))
             if not self._skip_resize and self._sprite.size != self._draw_size:
                 if (not self._size_locked):
                     # log("Size if wrong, reloading sprite", logTypes.warning)
                     self._sprite = Globals.game.load_image(self._sprite.name, self._sprite.path, self._draw_size)
                 else:
                     self._sprite.resize(self._draw_size)
-            Globals.game.screen.blit(self._sprite.get_data(), draw_pos - vec2(self._draw_size.x*(1-self._anchor.x), self._draw_size.y*self._anchor.y) + self._draw_offset)
+            Globals.game._screen.blit(self._sprite.get_data(), draw_pos - vec2(self._draw_size.x*(1-self._anchor.x), self._draw_size.y*self._anchor.y) + self._draw_offset)
     
     def get_sprite(self) -> Image:
         return self._sprite
