@@ -24,4 +24,4 @@ class TestScene(Scene):
 
         player.root.set_world_position(vec3(2, 0, 0))
         
-        # self.get_active_camera().attach(player.root)
+        self.get_active_camera().attach(player.root)
