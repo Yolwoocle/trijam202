@@ -2,11 +2,15 @@ from engine.slimyengine import *
 from player import *
 from objects import *
 
+from map import *
+
 
 class TestScene(Scene):
     def __init__(self):
         Scene.__init__(self)
         self._world = Globals.game.get_world()
+        
+        self.map = Map(vec3(32, 32, 32), 16 * Settings.pixel_size)
     
     def load(self):
         self._world = Globals.game.get_world()

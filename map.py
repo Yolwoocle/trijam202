@@ -12,6 +12,24 @@ class Tile:
         self.name = name
 
 
+class StaticTile(Tile):
+    def __init__(self, name: str) -> None:
+        super().__init__(name, )
+
+
+class DynamicTile(Tile):
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+    
+    def tick(self, dt):
+        raise Exception("`tick` function of DynamicTile is not defined")
+
+
+class StaticTiles:
+    Floor = StaticTile("floor")
+    Wall = StaticTile("wall")
+
+
 
 class Map(Drawable):
     def __init__(self, size:vec3, tile_size:int) -> None:
@@ -26,36 +44,44 @@ class Map(Drawable):
         self.size = size
         self.tile_size = tile_size
         
-        self.grid = [[[None for i in range(size.z)] for j in range(size.y)] for j in range(size.x)]
+        self.grid = [
+            [
+                [None for i in range(int(size.z))] for j in range(int(size.y))
+            ] for j in range(int(size.x))
+        ]
         self.dynamic_tiles = []
         
         self.map_surface = pygame.Surface((size.x * tile_size, size.y * tile_size))
         
         
-    def in_bounds(self, x:int, y:int) -> bool:
-        return (0 <= x < self.width and 0 <= y < self.height)
+    def in_bounds(self, pos:vec3) -> bool:
+        return (
+            0 <= pos.x < self.size.x and 
+            0 <= pos.y < self.size.y and 
+            0 <= pos.z < self.size.z
+        )
         
         
-    def get(self, x:int, y:int):
-        if not self.in_bounds(x, y):
+    def get(self, pos:vec3):
+        if not self.in_bounds(pos):
             return None
-        return self.grid[x][y]
+        return self.grid[pos.x][pos.y][pos.z]
 
 
-    def set(self, x:int, y:int, tile:Tile):
-        if not self.in_bounds(x, y):
+    def set(self, pos:vec3, tile:Tile):
+        if not self.in_bounds(pos):
             return False
         
-        old_obj = self.grid[x][y]
+        old_tile = self.grid[pos.x][pos.y][pos.z]
         
-        self.grid[x][y] = tile
-        if tile.is_dynamic:
+        self.grid[pos.x][pos.y][pos.z] = tile
+        if isinstance(tile, DynamicTile):
             self.dynamic_tiles.append(tile)
         
-        if old_obj.is_dynamic:
-            old_obj._delete_me = True 
+        if isinstance(old_tile, DynamicTile):
+            old_tile._delete_me = True 
             
-        return old_obj
+        return old_tile
     
 
     def tick(self, dt):
@@ -63,9 +89,9 @@ class Map(Drawable):
             tile.tick()
         
     def draw(self, screen):
-        for z in range(self.size.z):
-            for y in range(self.size.y):
-                for x in range(self.size.x):
+        for z in range(int(self.size.z)):
+            for y in range(int(self.size.y)):
+                for x in range(int(self.size.x)):
                     self.draw_tile(screen, self.grid[x][y][z], x, y, z)
 
     def draw_tile(self, screen, tile, x, y, z):
