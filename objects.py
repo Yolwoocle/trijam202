@@ -10,7 +10,7 @@ class Placeable(Actor):
 class CementMixer(Placeable):
     def __init__(self, pos: vec3 | None = None):
         Placeable.__init__(self, pos)
-        self._root:PhysicsComponent = PhysicsComponent(None, pos).set_simulate_physics(False).set_mass(0.01)
+        self._root:PhysicsComponent = PhysicsComponent(None, pos).set_simulate_physics(False)
         self._sprite = AnimatedSprite(self._root, vec3(), image_names=["cement_mixer"], sprite_time=0.5)
         self._tooltip = Tooltip(self._root, vec3(0, 0, 0))
         

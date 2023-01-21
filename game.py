@@ -14,7 +14,7 @@ game.load_font("game_font", "data/debug_font.ttf")
 Settings.debug_level = debugLevel.collisions    # Juste les collisions
 
 world = game.get_world()
-world.load_scene(MainMenu)
+world.load_scene(TestScene)
 
 while game.is_alive():
     game.begin_frame()    
