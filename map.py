@@ -31,7 +31,7 @@ class StaticTiles:
 
 
 
-class Map(Drawable):
+class Map:
     def __init__(self, size:vec3, tile_size:int) -> None:
         """Map that stores data about the world.
 
@@ -51,7 +51,10 @@ class Map(Drawable):
         ]
         self.dynamic_tiles = []
         
-        self.map_surface = pygame.Surface((size.x * tile_size, size.y * tile_size))
+        # self.map_surface = pygame.Surface((size.x * tile_size, size.y * tile_size))
+        self.map_surface = SpriteComponent(None, vec3(), size=vec2())
+        self.map_surface.set_sprite(Image().set_data(pygame.surface.Surface()))
+        Globals.game.get_world().get_current_scene().register_component(self.map_surface)
         
         
     def in_bounds(self, pos:vec3) -> bool:
@@ -95,4 +98,5 @@ class Map(Drawable):
                     self.draw_tile(screen, self.grid[x][y][z], x, y, z)
 
     def draw_tile(self, screen, tile, x, y, z):
-        tile.texture.blit(screen, self.tile_size * vec2(x, y))
+        tile.texture.blit(self.map_surface.get_sprite().get_data(), self.tile_size * vec2(x, y))
+        # tile.texture.blit(screen, self.tile_size * vec2(x, y))

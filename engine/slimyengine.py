@@ -850,7 +850,7 @@ class Game:
                     p=self.resource_path(next(iter(self._images[name].values())).path)
                     log("Loading image {} from disk with size ({}, {})".format(name, size[0], size[1]), logTypes.trace)
                     im = pygame.image.load(p).convert_alpha()
-                    im = pygame.transform.scale(im, size)
+                    im = pygame.transform.scale(im, size).convert_alpha()
                     s = im.get_size()
                     img = Image(name, vec2(s[0], s[1]), path, im)
                     self._images[name][s] = img
@@ -862,7 +862,7 @@ class Game:
         im = pygame.image.load(self.resource_path(path)).convert_alpha()
         log("Loading image {} from disk with {}".format(name, "size {}".format(size) if size else "default size"), logTypes.trace)
         if size:
-            im = pygame.transform.scale(im, size)
+            im = pygame.transform.scale(im, size).convert_alpha()
         s = im.get_size()
         img = Image(name, vec2(s[0], s[1]), path, im)
         self._images[name] = {}
@@ -1123,7 +1123,7 @@ class World:
         return self
 
     def register_particle_system(self, system:'ParticleSystem') -> 'World':
-        assert issubclass(type(system), ParticleSystem)
+        assert isinstance(system, ParticleSystem)
         self._particle_systems.append(system)
         return self
     
@@ -1175,11 +1175,11 @@ class Scene:
         return self._active_camera
     
     def add_drawable_rec(self, obj : 'SceneComponent'):
-        if issubclass(type(obj), DrawableComponent):
+        if isinstance(obj, DrawableComponent):
             self._drawables.append(obj)
         if obj.any_child():
             for child in obj.children:
-                if issubclass(type(child), SceneComponent):
+                if isinstance(child, SceneComponent):
                     self.add_drawable_rec(child) # type: ignore
     
     def register_actor(self, actor:'Actor') -> 'Scene':
@@ -1540,7 +1540,7 @@ class Component:
         self._parent   : Component | None  = parent
         self._children : List[Component]   = []
         if parent:
-            assert issubclass(type(parent), Component)
+            assert isinstance(parent, Component)
             parent.add_child(self)
 
     def add_child(self, child):
@@ -1565,7 +1565,7 @@ class SceneComponent(Component):
         self._parent:SceneComponent|None = parent
         self._pos:vec3 = pos if pos else vec3()
         self._size:vec3 = vec3(0.5, 0.5, 0.5)
-        self._scene_parent:bool = True if issubclass(type(parent), SceneComponent) else False
+        self._scene_parent:bool = True if isinstance(parent, SceneComponent) else False
         self._parent_pos:vec3 = parent.get_world_position() if self._scene_parent else vec3() # type: ignore
         self._valid:bool = False
         self._update_count:int = 0
@@ -2000,7 +2000,7 @@ class PhysicsWorld:
         return self
     
     def register_physics_component(self, obj:'PhysicsComponent'):
-        assert issubclass(type(obj), PhysicsComponent)
+        assert isinstance(obj, PhysicsComponent)
         self._objects.append(obj)
 
         obj.set_physics_world(self)
