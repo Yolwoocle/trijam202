@@ -716,6 +716,7 @@ class Settings:
     optimize_particles_alpha = False
     max_swaps_per_frame = 10
     debug_level = debugLevel.collisions
+    pixel_size = 0.1
 
 class Globals:
     game : 'Game' = None                # type: ignore
@@ -757,6 +758,7 @@ class Game:
         pygame.init()
         flags = pygame.RESIZABLE | pygame.DOUBLEBUF
         self._screen = pygame.display.set_mode(self._size, flags)
+        # self._screen_to_draw = pygame.display.set_mode(self._size, flags)
         self._title = title
         pygame.display.set_caption(self._title)
         self._clock = pygame.time.Clock()
@@ -957,7 +959,7 @@ class Game:
     
     def draw(self):
         self._gui_manager.draw_ui(self._screen)
-        self._world.draw()
+        self._world.draw(self._screen)
         self.debug_pass()
 
     
@@ -1048,8 +1050,13 @@ class Game:
     
     def end_frame(self):
         if not self._alive: return        
+        # self._screen = pygame.transform.scale(self._screen, self._size)
+        # pygame.transform.scale(self._screen_to_draw, self._size)
+        # print(self._size)
+        # self._screen_to_draw.blit(self._screen, pygame.rect.Rect(0, 0, self._size.x, self._size.y))
         pygame.display.flip()
         self._delta_time = self._clock.tick(self._target_fps) / 1000.0
+        # self._screen = pygame.transform.scale(self._screen, vec2(256, 256))
         return
     
     
@@ -1133,12 +1140,12 @@ class World:
         for system in self._particle_systems:
             system.tick(dt)
     
-    def draw(self):
+    def draw(self, screen:pygame.Surface):
         for system in self._particle_systems:
-            system.draw()
+            system.draw(screen)
         if self._current_scene is not None:
-            self._current_scene.draw()
-            self._current_scene.light_pass()
+            self._current_scene.draw(screen)
+            self._current_scene.light_pass(screen)
         
         Globals.game.debug_infos["particles_count"] = sum([s.get_particles_count() for s in self._particle_systems])
 
@@ -1203,7 +1210,7 @@ class Scene:
     def get_player_actor(self) -> 'Actor':
         return self._player_actor
     
-    def draw(self):
+    def draw(self, screen:pygame.Surface):
         # Lazy bubble sort with only few swaps per frame
         for _ in range(Settings.max_swaps_per_frame):
             for i in range(len(self._drawables)-1):
@@ -1214,15 +1221,15 @@ class Scene:
                     break
         if not self.manual_rendering:
             for background in self._backgrounds:
-                background.draw()
+                background.draw(screen)
             for obj in self._drawables:
-                obj.draw()
+                obj.draw(screen)
     
     def set_ambient_light(self, val:vec3):
         self._ambient_light = val
         return self
     
-    def light_pass(self):
+    def light_pass(self, screen:pygame.Surface):
         if self._lightmap.get_size()!=Globals.game._size:
             self._lightmap = pygame.surface.Surface(Globals.game._size)
         self._lightmap.fill(color_from_vec3(self._ambient_light*255))
@@ -1230,7 +1237,7 @@ class Scene:
             for light in self._lights:
                 light.draw()
             
-            Globals.game._screen.blit(self._lightmap, (0, 0), special_flags=pygame.BLEND_MULT)
+            screen.blit(self._lightmap, (0, 0), special_flags=pygame.BLEND_MULT)
     
     def update(self, dt:float):
         # for actor in self._actors:
@@ -1662,17 +1669,19 @@ class OrthographicCamera(Camera):
 
     def world_to_screen(self, world : vec3) -> vec2:
         p = world-self.get_world_position()
+        pas = 0.1
+        p = vec3(Math.snap_to_grid(p.x, pas), Math.snap_to_grid(p.y, pas), Math.snap_to_grid(p.z, pas))
         x = ((p.x)/self.bounds.x + self.offset.x)*self.screen_size.x
         y = ((p.y-p.z)/self.bounds.y + self.offset.y)*self.screen_size.y
-        return vec2(int(x), int(y))
+        return vec2(x, y)
         
     def set_bounds_height(self, height:float):
         self.bounds = vec2(height/self.aspect_ratio, height)
         Globals.game.fire_event(EventZoomLevelChanged(vec2(self.bounds)))
     
     def world_size2_to_screen(self, dim : vec2) -> vec2:
-        x = dim.x*self.screen_size.x/self.bounds.x
-        y = dim.y*self.screen_size.y/self.bounds.y
+        x = Math.snap_to_grid(dim.x, 0.1)*self.screen_size.x/self.bounds.x
+        y = Math.snap_to_grid(dim.y, 0.1)*self.screen_size.y/self.bounds.y
         return vec2(int(x), int(y))
 
 
@@ -1686,7 +1695,7 @@ class Drawable():
         self._z_bias = bias
         return self
     
-    def draw(self):
+    def draw(self, screen:pygame.Surface):
         return
     
     def is_visible(self) -> bool:
@@ -1736,8 +1745,8 @@ class Light(DrawableComponent):
         self._color.x, self._color.y, self._color.z = color.x, color.y, color.z
         return self
     
-    def draw(self):
-        Drawable.draw(self)
+    def draw(self, screen:pygame.Surface):
+        Drawable.draw(self, screen)
     
     def render(self):
         pass
@@ -1749,8 +1758,8 @@ class PointLight(Light):
         # self._light_surface.fill('White')
         self.render()
     
-    def draw(self):
-        Light.draw(self)
+    def draw(self, screen:pygame.Surface):
+        Light.draw(self, screen)
         self._scene.get_light_map().blit(self._light_surface, Globals.game.camera.world_to_screen(self._pos), special_flags=pygame.BLEND_ADD)
     
     def render(self):
@@ -1817,9 +1826,8 @@ class ParticleEmitter(Drawable):
     def get_particles_count(self)->int:
         return len(self._particles)
     
-    def draw(self) -> None:
+    def draw(self, screen:pygame.Surface) -> None:
         assert self._system!=None
-        screen = Globals.game._screen
         camera = Globals.game.camera
         screen_size = Globals.game.get_size()
         for particle in self._particles:
@@ -1873,8 +1881,8 @@ class ParticleSystem(DrawableComponent):
         
         return self
 
-    def draw(self) -> 'ParticleSystem':
-        DrawableComponent.draw(self)
+    def draw(self, screen:pygame.Surface) -> 'ParticleSystem':
+        DrawableComponent.draw(self, screen)
         for emitter in self._emitters:
             emitter.draw()
         return self
@@ -2197,7 +2205,7 @@ class PhysicsComponent(DrawableComponent, SceneComponent):
     def get_collider(self) -> Collider:
         return self._collider
 
-    def draw(self):
+    def draw(self, screen:pygame.Surface):
         if Settings.debug_level&debugLevel.physics:
             Globals.game.draw_debug_box((set_z(self.get_world_position()+self._bounding_box._begin, 0)),
                                         (set_z(self.get_world_position()+self._bounding_box._end, 0)), color=vec3(255, 150, 0), thickness=1)
@@ -2284,10 +2292,10 @@ class SpriteComponent(DrawableComponent):
         self._draw_offset:vec2 = vec2()
         self._anchor:vec2 = vec2(0.5, 0.5)
     
-    def draw(self):
-        Drawable.draw(self)
+    def draw(self, screen:pygame.Surface):
+        Drawable.draw(self, screen)
         if self._sprite and self.is_visible():
-            draw_pos = Globals.game.camera.world_to_screen(self.get_world_position())
+            draw_pos = Globals.game.camera.world_to_screen(self.get_world_position()-vec3(self._size.x*(1-self._anchor.x), self._size.y*self._anchor.y, 0))
             self._draw_size = Globals.game.camera.world_size2_to_screen(self.size.xy) if not self._skip_resize else self._sprite.get_size()
             if Settings.debug_level&debugLevel.drawing:
                 Globals.game.draw_debug_dot(draw_pos+self._draw_offset)
@@ -2299,7 +2307,7 @@ class SpriteComponent(DrawableComponent):
                     self._sprite = Globals.game.load_image(self._sprite.name, self._sprite.path, self._draw_size)
                 else:
                     self._sprite.resize(self._draw_size)
-            Globals.game._screen.blit(self._sprite.get_data(), draw_pos - vec2(self._draw_size.x*(1-self._anchor.x), self._draw_size.y*self._anchor.y) + self._draw_offset)
+            screen.blit(self._sprite.get_data(), draw_pos + self._draw_offset)
     
     def get_sprite(self) -> Image:
         return self._sprite
@@ -2333,7 +2341,7 @@ class AnimatedSprite(SpriteComponent):
         self._loop = True
         self._playing = True
     
-    def draw(self):
+    def draw(self, screen:pygame.Surface):
         if self._playing:
             self._time += Globals.game.get_delta_time()
             if self._time > self._time_per_sprite:
@@ -2346,7 +2354,7 @@ class AnimatedSprite(SpriteComponent):
                         self._current_sprite = len(self._sprites)-1
                         self._playing = False
         self.sprite = self._sprites[self._current_sprite]
-        SpriteComponent.draw(self)
+        SpriteComponent.draw(self, screen)
         
 
 class Widget:

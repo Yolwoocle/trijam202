@@ -17,7 +17,7 @@ class CementMixer(Placeable):
         self._t = 0.
         
         self._root.set_size(vec3(p_to_w(14), p_to_w(10), p_to_w(4)))
-        self._sprite.set_size(vec3(p_to_w(16), p_to_w(19), p_to_w(10))).set_local_position(vec3(0, -p_to_w(4), 0))
+        self._sprite.set_size(vec3(p_to_w(16), p_to_w(19), p_to_w(0))).set_local_position(vec3(0, -p_to_w(4), 0))
         self._tooltip.render()
         register_event_listener(EventListenerFunctionCallback(EventKeyPressed, self.on_keypress))
     
